@@ -83,7 +83,13 @@ Chaque compte a une **nature** (Livret A, PEA, crédit immobilier…, liste dans
 - Un compte déjà utilisé ne peut ni devenir ni cesser d'être une dette, un
   portefeuille de tickets ou un avantage affecté.
 
-## 5. Indicateurs du tableau de bord
+## 5. Indicateurs
+
+Le tableau de bord se limite à l'argent disponible (avec le reste à vivre),
+l'épargne totale, le résumé du mois, les dépenses par catégorie et les
+mouvements à venir. Total des soldes, dettes et ressources affectées sont sur
+la page Comptes ; réservé aux échéances et reste à vivre détaillés sur la page
+Prévisions.
 
 - **Total des soldes** = disponible + épargne + réserves + placements (hors
   ressources affectées et dettes).

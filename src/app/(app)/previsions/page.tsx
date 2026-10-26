@@ -11,7 +11,7 @@ import { Amount, Badge, Notice, PageHeader, PageSkeleton, StatTile } from "@/com
 import { addDays, formatDate, isValidIsoDate } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
 import { accountClass, balancesAt, totalsByClass } from "@/lib/domain/accounts";
-import { forecastEventsFor, horizonEnd } from "@/lib/domain/dashboard";
+import { computeDashboard, forecastEventsFor, horizonEnd } from "@/lib/domain/dashboard";
 import { includeEvent, minBalance, nextIncome, projectDaily, type ForecastEvent } from "@/lib/domain/forecast";
 import { PRIORITY_LABELS, goalAccumulated } from "@/lib/domain/goals";
 import { VERDICT_LABELS, simulatePurchase, type SimulationResult } from "@/lib/domain/simulator";
@@ -45,6 +45,8 @@ async function Forecast({ searchParams }: { searchParams: Promise<Search> }) {
   const hasAvailable = data.accounts.some((a) => !a.archivedAt && accountClass(a.type) === "available");
   const events = forecastEventsFor(data);
   const end = horizonEnd(today);
+  // Reste à vivre (scénario garanti), même calcul que le tableau de bord.
+  const dash = computeDashboard({ ...data, categoryName: (id) => categoriesById.get(id)?.name ?? "Sans catégorie" });
 
   const horizon = HORIZONS.find((h) => String(h) === one(sp.horizon)) ?? 90;
   const scenarioParam = one(sp.scenario);
@@ -311,6 +313,19 @@ async function Forecast({ searchParams }: { searchParams: Promise<Search> }) {
           <>
             <div className="grid-stats">
               <StatTile label="Disponible aujourd'hui" cents={totals.availableCents} nature="actual" />
+              <StatTile
+                label={dash.nextIncome ? "Reste jusqu'au prochain revenu" : "Reste sur 30 jours"}
+                cents={dash.remainingUntilIncomeCents}
+                nature="forecast"
+                tone="auto"
+                hint={
+                  <>
+                    {formatCents(dash.reservedCents)} réservés aux échéances jusqu&apos;au {formatDate(dash.reservedUntil, "short")}
+                    {settings.safetyReserveCents > 0 && ` · réserve de ${formatCents(settings.safetyReserveCents)} déduite`}
+                    {dash.perDayCents !== null && dash.daysUntilIncome ? ` · soit ${formatCents(dash.perDayCents)} par jour` : ""}
+                  </>
+                }
+              />
               <StatTile
                 label="Point le plus bas"
                 cents={low?.balanceCents ?? 0}
