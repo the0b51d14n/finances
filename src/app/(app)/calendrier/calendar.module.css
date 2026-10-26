@@ -1,0 +1,107 @@
+.grid {
+  display: none;
+}
+
+.weekdays,
+.week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.weekdays span {
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  text-align: center;
+  padding: 4px 0;
+}
+
+.week {
+  margin-top: 4px;
+}
+
+.day {
+  min-height: 96px;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev);
+  border: 1px solid var(--border-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.outside {
+  opacity: 0.35;
+}
+
+.today {
+  border-color: var(--accent);
+}
+
+.dayNumber {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.item {
+  display: block;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.income {
+  box-shadow: inset 2px 0 0 var(--positive);
+}
+
+.expense {
+  box-shadow: inset 2px 0 0 var(--negative);
+}
+
+.transfer {
+  box-shadow: inset 2px 0 0 var(--text-faint);
+}
+
+.done {
+  opacity: 0.6;
+}
+
+.skipped {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+.overdue {
+  background: var(--warning-soft);
+}
+
+.agenda {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.agendaDay h3 {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+@media (min-width: 760px) {
+  .grid {
+    display: block;
+  }
+
+  .agenda {
+    display: none;
+  }
+}
