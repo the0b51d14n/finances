@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { addAllocationAction, saveBudgetAction, saveGoalAction, savePurchasePlanAction } from "@/app/actions/planning";
 import { Field, FormMessage, useServerForm } from "@/components/ui/forms";
+import { isTransferable } from "@/lib/domain/accounts";
 import { allocationSchema, budgetSchema, goalSchema, purchasePlanSchema } from "@/lib/validation/schemas";
 import type { AccountOption, CategoryOption } from "./options";
 
@@ -79,7 +80,7 @@ export type GoalFormValues = {
 export function GoalForm({ accounts, initial }: { accounts: AccountOption[]; initial: GoalFormValues }) {
   const { state, pending, onSubmit, errors } = useServerForm(saveGoalAction, { schema: goalSchema });
   const [tracking, setTracking] = useState(initial.tracking);
-  const options = accounts.filter((a) => a.type !== "meal_voucher" && (!a.archived || a.id === initial.accountId));
+  const options = accounts.filter((a) => isTransferable(a.type) && (!a.archived || a.id === initial.accountId));
   return (
     <form onSubmit={onSubmit} className="form" noValidate>
       {initial.id && <input type="hidden" name="id" value={initial.id} />}

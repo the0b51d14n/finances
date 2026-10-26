@@ -5,7 +5,8 @@ import { Icon } from "@/components/ui/Icon";
 import { Amount, EmptyState, PageHeader, PageSkeleton, StatTile } from "@/components/ui/primitives";
 import { formatDate } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
-import { ACCOUNT_CLASS_LABELS, ACCOUNT_TYPE_LABELS, accountClass, balancesAt, totalsByClass } from "@/lib/domain/accounts";
+import { accountKindLabel } from "@/lib/domain/account-kinds";
+import { ACCOUNT_CLASS_LABELS, accountClass, balancesAt, totalsByClass } from "@/lib/domain/accounts";
 import type { AccountClass } from "@/lib/domain/types";
 import { formatCents } from "@/lib/money";
 
@@ -19,7 +20,7 @@ export default function AccountsPage() {
   );
 }
 
-const CLASS_ORDER: AccountClass[] = ["available", "savings", "reserve", "voucher"];
+const CLASS_ORDER: AccountClass[] = ["available", "savings", "reserve", "investment", "voucher", "debt"];
 
 async function Accounts() {
   const data = await loadFinanceData();
@@ -68,10 +69,14 @@ async function Accounts() {
       ) : (
         <>
           <section className="grid-stats">
-            <StatTile label="Total des soldes" cents={totals.totalCents} nature="actual" hint="Hors tickets-restaurant" />
+            <StatTile label="Total des soldes" cents={totals.totalCents} nature="actual" hint="Hors ressources affectées et dettes" />
             <StatTile label="Disponible" cents={totals.availableCents} nature="actual" />
             <StatTile label="Épargne" cents={totals.savingsCents} nature="actual" />
-            {totals.voucherCents !== 0 && <StatTile label="Tickets-restaurant" cents={totals.voucherCents} nature="actual" />}
+            {totals.investmentCents !== 0 && <StatTile label="Placements" cents={totals.investmentCents} nature="actual" hint="Valeur à la dernière mise à jour" />}
+            {totals.voucherCents !== 0 && <StatTile label="Ressources affectées" cents={totals.voucherCents} nature="actual" hint="Tickets, cartes cadeaux… hors total" />}
+            {totals.debtCents !== 0 && (
+              <StatTile label="Dettes" cents={totals.debtCents} nature="actual" hint={`Patrimoine net : ${formatCents(totals.netWorthCents)}`} />
+            )}
           </section>
 
           {groups.map(({ key, title, list }) => {
@@ -92,7 +97,7 @@ async function Accounts() {
                           <span className="list-main">
                             <span style={{ fontWeight: 500 }}>{a.name}</span>
                             <span className="faint tiny">
-                              {ACCOUNT_TYPE_LABELS[a.type]}
+                              {accountKindLabel(a)}
                               {byBank && ` · ${ACCOUNT_CLASS_LABELS[accountClass(a.type)]}`}
                               {a.id === data.settings.spendingAccountId && " · compte de dépenses"}
                               {planned !== 0 && ` · ${formatCents(planned, { signed: true })} prévus`}
@@ -120,7 +125,7 @@ async function Accounts() {
                   <span className="list-main">
                     <span>{a.name}</span>
                     <span className="faint tiny">
-                      {ACCOUNT_TYPE_LABELS[a.type]} · archivé le {formatDate(a.archivedAt!.slice(0, 10))}
+                      {accountKindLabel(a)} · archivé le {formatDate(a.archivedAt!.slice(0, 10))}
                     </span>
                   </span>
                   <Amount cents={balances.get(a.id) ?? 0} />

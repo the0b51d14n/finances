@@ -3,15 +3,30 @@
 import { useState } from "react";
 import { adjustBalanceAction, saveAccountAction } from "@/app/actions/ledger";
 import { Field, FormMessage, useServerForm } from "@/components/ui/forms";
-import { ACCOUNT_CLASS_LABELS, ACCOUNT_TYPE_LABELS, accountClass } from "@/lib/domain/accounts";
+import { ACCOUNT_KIND_GROUPS, ACCOUNT_SUBTYPES, type AccountSubtype, subtypeType } from "@/lib/domain/account-kinds";
+import { ACCOUNT_CLASS_LABELS, accountClass } from "@/lib/domain/accounts";
 import type { AccountType } from "@/lib/domain/types";
 import { formatCents } from "@/lib/money";
 import { accountSchema, balanceAdjustmentSchema } from "@/lib/validation/schemas";
 
+/** Ce que le type implique pour les calculs, affiché sous le choix du type. */
+const TYPE_HELP: Record<AccountType, string> = {
+  checking: "Compté dans l'argent disponible. Un découvert se traduit par un solde négatif de ce compte : pas de compte séparé.",
+  cash: "Compté dans l'argent disponible.",
+  savings: "Compté dans l'épargne et le total, pas dans l'argent disponible.",
+  dedicated_savings: "Compté dans l'épargne et le total, pas dans l'argent disponible.",
+  other: "Compté dans le total, pas dans l'argent disponible.",
+  investment:
+    "Valeur fluctuante, comptée dans le total mais pas dans l'argent disponible. Mettez la valeur à jour depuis la page du compte : la variation n'est ni un revenu ni une dépense.",
+  debt: "Jamais compté comme de l'argent. Un remboursement se saisit comme un transfert depuis votre compte courant ; les intérêts et frais comme une dépense.",
+  meal_voucher: "Ressource affectée : ni dans l'argent disponible ni dans le total des soldes.",
+  earmarked: "Ressource affectée : ni dans l'argent disponible ni dans le total. Elle sert à payer des dépenses, sans transfert possible.",
+};
+
 export type AccountFormValues = {
   id?: string;
   name: string;
-  type: AccountType;
+  subtype: AccountSubtype;
   openingBalance: string;
   openingBalanceDate: string;
   validUntil: string;
@@ -30,7 +45,16 @@ export function AccountForm({
   institutions?: string[];
 }) {
   const { state, pending, onSubmit, errors } = useServerForm(saveAccountAction, { schema: accountSchema });
-  const [type, setType] = useState<AccountType>(initial.type);
+  const [subtype, setSubtype] = useState<AccountSubtype>(initial.subtype);
+  const type = subtypeType(subtype);
+  const openingLabel = type === "debt" ? "Montant restant dû (€)" : type === "investment" ? "Valeur initiale (€)" : "Solde initial (€)";
+  const openingHint = openingLocked
+    ? "Compte déjà utilisé : corrigez le solde par un ajustement."
+    : type === "debt"
+      ? "Montant positif au début du jour de référence, enregistré comme une dette."
+      : type === "checking" || type === "savings" || type === "other"
+        ? "Solde au début du jour de référence. Négatif possible (découvert)."
+        : "Solde au début du jour de référence.";
 
   return (
     <form onSubmit={onSubmit} className="form" noValidate>
@@ -39,12 +63,16 @@ export function AccountForm({
         <Field id="name" label="Nom du compte" error={errors.name}>
           <input id="name" name="name" className="input" maxLength={80} defaultValue={initial.name} placeholder="Ex. Compte courant" required />
         </Field>
-        <Field id="type" label="Type" error={errors.type} hint={`Classe : ${ACCOUNT_CLASS_LABELS[accountClass(type)]}`}>
-          <select id="type" name="type" className="select" value={type} onChange={(e) => setType(e.target.value as AccountType)}>
-            {Object.entries(ACCOUNT_TYPE_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
+        <Field id="subtype" label="Type de compte" error={errors.subtype} hint={`Classe : ${ACCOUNT_CLASS_LABELS[accountClass(type)]}`}>
+          <select id="subtype" name="subtype" className="select" value={subtype} onChange={(e) => setSubtype(e.target.value as AccountSubtype)}>
+            {ACCOUNT_KIND_GROUPS.map((group) => (
+              <optgroup key={group.label} label={group.label}>
+                {group.kinds.map((kind) => (
+                  <option key={kind} value={kind}>
+                    {ACCOUNT_SUBTYPES[kind].label}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </Field>
@@ -67,12 +95,7 @@ export function AccountForm({
         </Field>
       </div>
       <div className="form-grid">
-        <Field
-          id="opening_balance"
-          label="Solde initial (€)"
-          error={errors.opening_balance}
-          hint={openingLocked ? "Compte déjà utilisé : corrigez le solde par un ajustement." : "Solde au début du jour de référence. Négatif possible (découvert)."}
-        >
+        <Field id="opening_balance" label={openingLabel} error={errors.opening_balance} hint={openingHint}>
           <input
             id="opening_balance"
             name="opening_balance"
@@ -105,11 +128,7 @@ export function AccountForm({
           <input id="valid_until" name="valid_until" type="date" className="input" defaultValue={initial.validUntil} />
         </Field>
       )}
-      {type === "meal_voucher" && (
-        <p className="faint small">
-          Les tickets-restaurant sont une ressource affectée : ils ne comptent ni dans l&apos;argent disponible ni dans le total des soldes.
-        </p>
-      )}
+      <p className="faint small">{TYPE_HELP[type]}</p>
       <Field id="notes" label="Notes (facultatif)" error={errors.notes}>
         <textarea id="notes" name="notes" className="textarea" maxLength={1000} defaultValue={initial.notes} />
       </Field>

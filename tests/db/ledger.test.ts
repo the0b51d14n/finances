@@ -393,6 +393,91 @@ describe("banques et planification d'achats", () => {
   });
 });
 
+describe("natures de comptes", () => {
+  it("accepte les comptes sans nature et vérifie la cohérence nature/type", async () => {
+    const [row] = await t.asUser<Row>(alice, "select subtype from public.accounts where name = 'Compte courant'");
+    // Compte créé sans nature : accepté (nature déduite du type par l'application).
+    expect(row.subtype).toBeNull();
+    const [livretA] = await t.asUser<Row>(
+      alice,
+      `insert into public.accounts (name, type, subtype, opening_balance_cents, opening_balance_date)
+       values ('Livret A', 'savings', 'livret_a', 0, '2026-01-01') returning subtype`,
+    );
+    expect(livretA.subtype).toBe("livret_a");
+    await expect(
+      t.asUser(
+        alice,
+        `insert into public.accounts (name, type, subtype, opening_balance_cents, opening_balance_date)
+         values ('PEA', 'checking', 'pea', 0, '2026-01-01')`,
+      ),
+    ).rejects.toThrow(/accounts_subtype_check/);
+    await expect(
+      t.asUser(
+        alice,
+        `insert into public.accounts (name, type, subtype, opening_balance_cents, opening_balance_date)
+         values ('Inconnu', 'other', 'nature_inventee', 0, '2026-01-01')`,
+      ),
+    ).rejects.toThrow(/accounts_subtype_check/);
+  });
+
+  it("impose le signe des dettes et des avantages affectés", async () => {
+    await expect(
+      t.asUser(
+        alice,
+        `insert into public.accounts (name, type, subtype, opening_balance_cents, opening_balance_date)
+         values ('Prêt', 'debt', 'student_loan', 500000, '2026-01-01')`,
+      ),
+    ).rejects.toThrow(/accounts_opening_sign_check/);
+    await expect(
+      t.asUser(
+        alice,
+        `insert into public.accounts (name, type, subtype, opening_balance_cents, opening_balance_date)
+         values ('Carte cadeau', 'earmarked', 'gift_card', -100, '2026-01-01')`,
+      ),
+    ).rejects.toThrow(/accounts_opening_sign_check/);
+  });
+
+  it("rembourse une dette par transfert et interdit les transferts d'avantages affectés", async () => {
+    const current = await createAccount(alice, "Courant natures", "checking", 100_000, "2026-03-01");
+    const loan = await createAccount(alice, "Prêt étudiant", "debt", -500_000, "2026-03-01");
+    const gift = await createAccount(alice, "Carte cadeau", "earmarked", 5_000, "2026-03-01");
+    await save(alice, {
+      kind: "transfer",
+      date: "2026-03-05",
+      label: "Échéance prêt",
+      amount_cents: 20_000,
+      entries: [
+        { account_id: current, amount_cents: -20_000 },
+        { account_id: loan, amount_cents: 20_000 },
+      ],
+    });
+    expect(await balance(alice, loan)).toBe(-480_000);
+    expect(await balance(alice, current)).toBe(80_000);
+    await expect(
+      save(alice, {
+        kind: "transfer",
+        date: "2026-03-05",
+        label: "Vider la carte",
+        amount_cents: 1_000,
+        entries: [
+          { account_id: gift, amount_cents: -1_000 },
+          { account_id: current, amount_cents: 1_000 },
+        ],
+      }),
+    ).rejects.toThrow(/meal_voucher_transfer/);
+    // Une carte cadeau peut payer une dépense.
+    await save(alice, {
+      kind: "expense",
+      date: "2026-03-06",
+      label: "Lampe",
+      amount_cents: 2_000,
+      category_id: await categoryId(alice, "home_furnishing"),
+      entries: [{ account_id: gift, amount_cents: -2_000 }],
+    });
+    expect(await balance(alice, gift)).toBe(3_000);
+  });
+});
+
 describe("contrôle des accès", () => {
   let aliceAccount: string;
   let aliceTx: string;

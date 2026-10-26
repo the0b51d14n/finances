@@ -15,7 +15,7 @@ import type {
 } from "@/lib/domain/types";
 
 export const ACCOUNT_COLUMNS =
-  "id, name, type, currency, opening_balance_cents, opening_balance_date, valid_until, institution, notes, archived_at, created_at";
+  "id, name, type, subtype, currency, opening_balance_cents, opening_balance_date, valid_until, institution, notes, archived_at, created_at";
 export const CATEGORY_COLUMNS = "id, kind, name, system_key, color, sort_order, archived_at";
 export const TRANSACTION_COLUMNS =
   "id, kind, status, date, label, notes, amount_cents, expected_amount_cents, category_id, recurrence_id, occurrence_date, is_exceptional, created_at, updated_at, confirmed_at, entries(account_id, amount_cents)";
@@ -42,6 +42,7 @@ export function toAccount(r: Row): Account {
     id: str(r.id),
     name: str(r.name),
     type: r.type as Account["type"],
+    subtype: strOrNull(r.subtype) as Account["subtype"],
     currency: str(r.currency),
     openingBalanceCents: num(r.opening_balance_cents),
     openingBalanceDate: str(r.opening_balance_date),

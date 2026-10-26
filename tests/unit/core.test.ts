@@ -85,9 +85,44 @@ describe("soldes", () => {
 
   it("exclut les tickets-restaurant du total et ne fausse pas le total avec les transferts", () => {
     const totals = totalsByClass(accounts, balancesAt(accounts, transactions, "2026-02-28"));
-    expect(totals).toEqual({ totalCents: 223_000, availableCents: 153_000, savingsCents: 70_000, reserveCents: 0, voucherCents: 14_000 });
+    expect(totals).toEqual({
+      totalCents: 223_000,
+      availableCents: 153_000,
+      savingsCents: 70_000,
+      reserveCents: 0,
+      investmentCents: 0,
+      debtCents: 0,
+      voucherCents: 14_000,
+      netWorthCents: 223_000,
+    });
     // Total = soldes initiaux bancaires + revenus bancaires − part bancaire des dépenses : le transfert est neutre.
     expect(totals.totalCents).toBe(150_000 + 120_000 - 45_000 - 2_000);
+  });
+
+  it("compte les placements dans le total, les dettes à part et jamais dans le disponible", () => {
+    const pea = account("pea", "investment", 300_000);
+    const loan = account("loan", "debt", -500_000);
+    const gift = account("gift", "earmarked", 2_000);
+    const all = [chk, pea, loan, gift];
+    const txs = [transfer("2026-02-05", 20_000, "chk", "loan"), tx("adjustment", "2026-02-10", 15_000, [["pea", 15_000]])];
+    const totals = totalsByClass(all, balancesAt(all, txs, "2026-02-28"));
+    expect(totals.availableCents).toBe(80_000);
+    expect(totals.investmentCents).toBe(315_000);
+    expect(totals.debtCents).toBe(-480_000);
+    expect(totals.voucherCents).toBe(2_000);
+    expect(totals.totalCents).toBe(80_000 + 315_000);
+    expect(totals.netWorthCents).toBe(80_000 + 315_000 - 480_000);
+    // Rembourser une dette ne change pas le patrimoine net : seule la revalorisation du PEA le modifie.
+    const before = totalsByClass(all, balancesAt(all, [], "2026-02-28"));
+    expect(totals.netWorthCents - before.netWorthCents).toBe(15_000);
+  });
+
+  it("refuse les transferts d'avantages affectés", () => {
+    const gift = account("gift", "earmarked", 2_000);
+    const loan = account("loan", "debt", -500_000);
+    const m = byId([chk, gift, loan]);
+    expect(buildEntries({ kind: "transfer", amountCents: 1_000, fromAccountId: "gift", toAccountId: "chk" }, m).ok).toBe(false);
+    expect(buildEntries({ kind: "transfer", amountCents: 1_000, fromAccountId: "chk", toAccountId: "loan" }, m).ok).toBe(true);
   });
 
   it("applique la règle du solde initial (opérations antérieures sans effet)", () => {

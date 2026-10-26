@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { saveTransactionAction } from "@/app/actions/ledger";
 import { Field, FormMessage, useServerForm } from "@/components/ui/forms";
+import { isTransferable } from "@/lib/domain/accounts";
 import { FREQUENCY_LABELS } from "@/lib/domain/recurrence";
 import type { TransactionKind, TransactionStatus } from "@/lib/domain/types";
 import { transactionSchema } from "@/lib/validation/schemas";
@@ -59,7 +60,7 @@ export function TransactionForm({
   const editing = !!initial.id;
   const usable = (a: AccountOption) => !a.archived || a.id === initial.accountId || a.id === initial.toAccountId || a.id === initial.voucherAccountId;
   const voucherAccounts = accounts.filter((a) => a.type === "meal_voucher" && usable(a));
-  const sourceAccounts = accounts.filter((a) => usable(a) && (kind !== "transfer" || a.type !== "meal_voucher"));
+  const sourceAccounts = accounts.filter((a) => usable(a) && (kind !== "transfer" || isTransferable(a.type)));
   const selectedAccount = accounts.find((a) => a.id === accountId);
   const kindCategories = categories.filter((c) => c.kind === kind && (!c.archived || c.id === initial.categoryId));
   const err = (name: string) => errors[name];

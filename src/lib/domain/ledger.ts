@@ -6,6 +6,7 @@
  * données revérifie (contrainte différée check_transaction_integrity).
  */
 import type { Cents } from "@/lib/money";
+import { isTransferable } from "./accounts";
 import type { Account, Entry, Transaction, TransactionKind } from "./types";
 
 export type EntryInput =
@@ -70,8 +71,8 @@ export function buildEntries(input: EntryInput, accountsById: Map<string, Accoun
       const to = requireAccount(input.toAccountId);
       if (!from || !to) return { ok: false, error: "Comptes source et destinataire requis." };
       if (from.id === to.id) return { ok: false, error: "Les comptes source et destinataire doivent être différents." };
-      if (from.type === "meal_voucher" || to.type === "meal_voucher") {
-        return { ok: false, error: "Les tickets-restaurant ne peuvent pas être transférés." };
+      if (!isTransferable(from.type) || !isTransferable(to.type)) {
+        return { ok: false, error: "Les tickets-restaurant et avantages affectés ne peuvent pas être transférés." };
       }
       return {
         ok: true,

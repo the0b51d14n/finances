@@ -5,6 +5,7 @@
  */
 import { z } from "zod";
 import { isValidIsoDate } from "@/lib/dates";
+import { ACCOUNT_SUBTYPE_KEYS, subtypeType } from "@/lib/domain/account-kinds";
 import { parseAmountToCents } from "@/lib/money";
 
 const FREQUENCIES = ["daily", "weekly", "biweekly", "monthly", "quarterly", "semiannual", "annual"] as const;
@@ -167,7 +168,8 @@ export const accountSchema = z
   .object({
     id: optionalUuid,
     name: requiredText(80, "Nom"),
-    type: z.enum(["checking", "cash", "savings", "dedicated_savings", "other", "meal_voucher"], { error: "Type de compte invalide." }),
+    subtype: z.enum(ACCOUNT_SUBTYPE_KEYS, { error: "Type de compte invalide." }),
+    /** Pour une dette : montant restant dû, saisi positif et enregistré négatif. */
     opening_balance: signedAmount,
     opening_balance_date: isoDate,
     valid_until: optionalDate,
@@ -175,12 +177,20 @@ export const accountSchema = z
     notes: optionalText(1000),
   })
   .superRefine((v, ctx) => {
-    if ((v.type === "cash" || v.type === "meal_voucher") && v.opening_balance < 0) {
+    const type = subtypeType(v.subtype);
+    if ((type === "cash" || type === "meal_voucher" || type === "earmarked") && v.opening_balance < 0) {
       ctx.addIssue({ code: "custom", path: ["opening_balance"], message: "Ce type de compte ne peut pas avoir un solde négatif." });
     }
-    if (v.valid_until && v.type !== "meal_voucher") {
+    if (type === "debt" && v.opening_balance < 0) {
+      ctx.addIssue({ code: "custom", path: ["opening_balance"], message: "Saisissez le montant restant dû en positif." });
+    }
+    if (v.valid_until && type !== "meal_voucher") {
       ctx.addIssue({ code: "custom", path: ["valid_until"], message: "La validité ne concerne que les tickets-restaurant." });
     }
+  })
+  .transform((v) => {
+    const type = subtypeType(v.subtype);
+    return { ...v, type, opening_balance: type === "debt" ? 0 - v.opening_balance : v.opening_balance };
   });
 
 export const categorySchema = z.object({

@@ -10,7 +10,8 @@ import { Icon } from "@/components/ui/Icon";
 import { Badge, Notice, PageHeader, PageSkeleton, StatTile } from "@/components/ui/primitives";
 import { formatDate } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
-import { ACCOUNT_CLASS_LABELS, ACCOUNT_TYPE_LABELS, accountClass, balancesAt, countsInBalance } from "@/lib/domain/accounts";
+import { accountKindLabel, accountSubtype } from "@/lib/domain/account-kinds";
+import { ACCOUNT_CLASS_LABELS, accountClass, balancesAt, countsInBalance } from "@/lib/domain/accounts";
 import { centsToInput, formatCents } from "@/lib/money";
 
 export const metadata: Metadata = { title: "Compte" };
@@ -54,7 +55,7 @@ async function AccountDetail({ params }: { params: PageProps<"/comptes/[id]">["p
     <div className="stack">
       <PageHeader
         title={account.name}
-        subtitle={`${account.institution ? `${account.institution} · ` : ""}${ACCOUNT_TYPE_LABELS[account.type]} · ${ACCOUNT_CLASS_LABELS[accountClass(account.type)]}`}
+        subtitle={`${account.institution ? `${account.institution} · ` : ""}${accountKindLabel(account)} · ${ACCOUNT_CLASS_LABELS[accountClass(account.type)]}`}
         back={{ href: "/comptes", label: "Comptes" }}
         actions={
           !account.archivedAt && (
@@ -120,8 +121,13 @@ async function AccountDetail({ params }: { params: PageProps<"/comptes/[id]">["p
       {!account.archivedAt && (
         <section className="card">
           <div className="card-header">
-            <h2>Corriger le solde</h2>
+            <h2>{account.type === "investment" ? "Mettre à jour la valeur" : "Corriger le solde"}</h2>
           </div>
+          {account.type === "investment" && (
+            <p className="faint small">
+              La variation de valeur est enregistrée comme un ajustement : elle n&apos;est comptée ni comme un revenu ni comme une dépense.
+            </p>
+          )}
           <AdjustBalanceForm accountId={account.id} currentCents={balance} />
         </section>
       )}
@@ -134,8 +140,9 @@ async function AccountDetail({ params }: { params: PageProps<"/comptes/[id]">["p
             initial={{
               id: account.id,
               name: account.name,
-              type: account.type,
-              openingBalance: centsToInput(account.openingBalanceCents),
+              subtype: accountSubtype(account),
+              // Une dette est saisie en montant restant dû (positif).
+              openingBalance: centsToInput(account.type === "debt" ? 0 - account.openingBalanceCents : account.openingBalanceCents),
               openingBalanceDate: account.openingBalanceDate,
               validUntil: account.validUntil ?? "",
               institution: account.institution ?? "",

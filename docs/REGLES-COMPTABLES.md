@@ -54,18 +54,41 @@ et `delete_transaction`, atomiques et auditées.
 
 ### Classes de comptes
 
-| Type                  | Classe            | Compté dans                       |
-|-----------------------|-------------------|-----------------------------------|
-| Compte courant        | Disponible        | Disponible, total                 |
-| Espèces               | Disponible        | Disponible, total                 |
-| Livret d'épargne      | Épargne           | Épargne, total                    |
-| Épargne spécifique    | Épargne           | Épargne, total                    |
-| Autre réserve         | Réserve           | Total uniquement                  |
-| Tickets-restaurant    | Ressource affectée| Ni disponible, ni total           |
+Chaque compte a une **nature** (Livret A, PEA, crédit immobilier…, liste dans
+`src/lib/domain/account-kinds.ts`) qui détermine son **type**, donc sa classe :
+
+| Type (exemples de natures)                                        | Classe             | Compté dans              |
+|-------------------------------------------------------------------|--------------------|--------------------------|
+| Compte courant (joint, secondaire, pro, PayPal, paiement mobile)  | Disponible         | Disponible, total        |
+| Espèces (carte prépayée, portefeuille électronique)               | Disponible         | Disponible, total        |
+| Livret d'épargne (Livret A, LDDS, LEP, Livret Jeune, PEL, CEL, compte à terme) | Épargne | Épargne, total        |
+| Épargne spécifique (objectif personnel)                           | Épargne            | Épargne, total           |
+| Autre réserve (cagnotte, cashback, compte personnalisé)           | Réserve            | Total uniquement         |
+| Placement (CTO, PEA, assurance-vie, PER, crypto, actions, obligations, financement participatif) | Placements | Total uniquement |
+| Crédit ou dette (immobilier, consommation, prêt étudiant, dette personnelle) | Dettes  | Patrimoine net uniquement |
+| Tickets-restaurant                                                | Ressource affectée | Ni disponible, ni total  |
+| Avantage affecté (carte cadeau, avoirs, chèques-vacances, titres de transport, avantages salariés) | Ressource affectée | Ni disponible, ni total |
+
+- **Placements** : la valeur fluctue. Elle se met à jour par un ajustement
+  (écart entre valeur calculée et valeur constatée), jamais compté comme revenu
+  ou dépense.
+- **Dettes** : solde ≤ 0 (montant restant dû, saisi en positif). Un
+  remboursement est un **transfert** du compte courant vers la dette (le
+  patrimoine net ne change pas, le disponible baisse) ; intérêts et frais sont
+  des dépenses. Une dette n'est jamais comptée comme de l'argent disponible.
+- **Découvert** : pas de compte séparé. C'est le solde négatif d'un compte
+  courant ; un compte « découvert » le compterait deux fois.
+- **Avantages affectés** : comme les tickets-restaurant, ils paient des
+  dépenses mais ne peuvent faire l'objet d'aucun transfert.
+- Un compte déjà utilisé ne peut ni devenir ni cesser d'être une dette, un
+  portefeuille de tickets ou un avantage affecté.
 
 ## 5. Indicateurs du tableau de bord
 
-- **Total des soldes** = disponible + épargne + réserves (hors tickets-restaurant).
+- **Total des soldes** = disponible + épargne + réserves + placements (hors
+  ressources affectées et dettes).
+- **Dettes** = somme des soldes des crédits et dettes (≤ 0) ; **patrimoine net**
+  = total des soldes + dettes.
 - **Argent disponible** = soldes des comptes courants et espèces.
 - **Épargne totale** = soldes des livrets et comptes d'épargne spécifique.
 - **Affecté aux objectifs** : part des soldes réservée aux objectifs, jamais ajoutée.

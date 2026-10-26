@@ -41,6 +41,9 @@ export class DataLoadError extends Error {
   }
 }
 
+const MIGRATION_PENDING_ADVICE =
+  "Une migration récente n'a pas été appliquée : exécutez dans l'ordre les fichiers de supabase/migrations non encore exécutés (SQL Editor), puis rechargez.";
+
 type Page = { data: Record<string, unknown>[] | null; error: { code?: string } | null };
 
 /** PostgREST limite chaque réponse (1000 lignes par défaut) : on pagine jusqu'au bout. */
@@ -51,6 +54,7 @@ async function fetchAll(what: string, query: (from: number, to: number) => Promi
     const { data, error } = await query(from, from + pageSize - 1);
     if (error) {
       console.error(`[données] échec du chargement : ${what} (${error.code ?? "?"})`);
+      if (error.code === "42703" || error.code === "PGRST204") throw new DataLoadError("base à mettre à jour", MIGRATION_PENDING_ADVICE);
       throw new DataLoadError(what);
     }
     rows.push(...(data ?? []));
@@ -89,10 +93,7 @@ export const loadFinanceData = cache(async (): Promise<FinanceData> => {
     );
   }
   if (settingsRes.error?.code === "42703" || settingsRes.error?.code === "PGRST204") {
-    throw new DataLoadError(
-      "base à mettre à jour",
-      "Une migration récente n'a pas été appliquée : exécutez dans l'ordre les fichiers de supabase/migrations non encore exécutés (SQL Editor), puis rechargez.",
-    );
+    throw new DataLoadError("base à mettre à jour", MIGRATION_PENDING_ADVICE);
   }
   if (!settingsRes.error && !settingsRes.data) {
     // Premier accès : création idempotente des paramètres et catégories par défaut.

@@ -4,17 +4,29 @@
  */
 import type { Cents } from "@/lib/money";
 import type { IsoDate } from "@/lib/dates";
+import type { AccountSubtype } from "./account-kinds";
 
-export type AccountType = "checking" | "cash" | "savings" | "dedicated_savings" | "other" | "meal_voucher";
+export type AccountType =
+  | "checking"
+  | "cash"
+  | "savings"
+  | "dedicated_savings"
+  | "other"
+  | "meal_voucher"
+  | "investment"
+  | "debt"
+  | "earmarked";
 
 /**
  * Classe comptable d'un compte, déterminée par son type :
- *  - available : argent librement disponible (compte courant, espèces)
- *  - savings   : épargne (livrets, épargne spécifique)
- *  - reserve   : autre réserve, comptée dans le total mais pas dans le disponible
- *  - voucher   : tickets-restaurant, ressource affectée, hors total bancaire
+ *  - available  : argent librement disponible (compte courant, espèces)
+ *  - savings    : épargne (livrets, épargne spécifique)
+ *  - reserve    : autre réserve, comptée dans le total mais pas dans le disponible
+ *  - investment : placements à valeur fluctuante, comptés dans le total
+ *  - debt       : crédits et dettes (solde ≤ 0), jamais comptés comme de l'argent
+ *  - voucher    : tickets-restaurant et avantages affectés, hors total
  */
-export type AccountClass = "available" | "savings" | "reserve" | "voucher";
+export type AccountClass = "available" | "savings" | "reserve" | "investment" | "debt" | "voucher";
 
 export type TransactionKind = "expense" | "income" | "transfer" | "adjustment";
 export type TransactionStatus = "planned" | "confirmed" | "cancelled";
@@ -28,6 +40,8 @@ export type Account = {
   id: string;
   name: string;
   type: AccountType;
+  /** Nature précise (Livret A, PEA…) ; null pour un compte antérieur aux natures. */
+  subtype: AccountSubtype | null;
   currency: string;
   openingBalanceCents: Cents;
   openingBalanceDate: IsoDate;

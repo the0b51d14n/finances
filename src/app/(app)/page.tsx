@@ -7,6 +7,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Amount, Badge, EmptyState, Notice, PageHeader, PageSkeleton, ProgressBar, StatTile } from "@/components/ui/primitives";
 import { formatDate, formatMonthShort } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
+import { accountClass } from "@/lib/domain/accounts";
 import { BUDGET_PERIOD_LABELS } from "@/lib/domain/budgets";
 import { computeDashboard } from "@/lib/domain/dashboard";
 import { formatCents } from "@/lib/money";
@@ -48,7 +49,12 @@ async function Dashboard() {
   }
 
   const d = computeDashboard({ ...data, categoryName });
-  const hasVouchers = data.accounts.some((a) => a.type === "meal_voucher" && !a.archivedAt);
+  const earmarked = data.accounts.filter((a) => !a.archivedAt && accountClass(a.type) === "voucher");
+  const onlyMealVouchers = earmarked.every((a) => a.type === "meal_voucher");
+  const totalParts = [
+    d.totals.investmentCents ? `${formatCents(d.totals.investmentCents)} de placements` : null,
+    d.totals.reserveCents ? `${formatCents(d.totals.reserveCents)} de réserves` : null,
+  ].filter(Boolean);
   const expenseRows = [...d.month.expenseByCategory.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
@@ -91,9 +97,26 @@ async function Dashboard() {
           label="Total des soldes"
           cents={d.totals.totalCents}
           nature="actual"
-          hint={d.totals.reserveCents ? `dont ${formatCents(d.totals.reserveCents)} de réserves · hors tickets` : "Hors tickets-restaurant"}
+          hint={totalParts.length ? `dont ${totalParts.join(" et ")} · hors dettes` : "Hors ressources affectées et dettes"}
         />
-        {hasVouchers && <StatTile label="Tickets-restaurant" cents={d.totals.voucherCents} nature="actual" href="/ressources" hint="Ressource affectée, hors total" />}
+        {d.totals.debtCents !== 0 && (
+          <StatTile
+            label="Dettes"
+            cents={d.totals.debtCents}
+            nature="actual"
+            href="/comptes"
+            hint={`Patrimoine net : ${formatCents(d.totals.netWorthCents)}`}
+          />
+        )}
+        {earmarked.length > 0 && (
+          <StatTile
+            label={onlyMealVouchers ? "Tickets-restaurant" : "Ressources affectées"}
+            cents={d.totals.voucherCents}
+            nature="actual"
+            href={onlyMealVouchers ? "/ressources" : "/comptes"}
+            hint="Ressource affectée, hors total"
+          />
+        )}
         <StatTile
           label="Réservé aux échéances"
           cents={d.reservedCents}

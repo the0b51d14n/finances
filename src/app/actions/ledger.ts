@@ -7,6 +7,7 @@ import { addDays, todayParis } from "@/lib/dates";
 import { dbErrorMessage } from "@/lib/data/errors";
 import { ACCOUNT_COLUMNS, RULE_COLUMNS, toAccount, toRule } from "@/lib/data/mappers";
 import { getSession } from "@/lib/data/session";
+import { TYPES_LOCKED_WHEN_USED } from "@/lib/domain/accounts";
 import { adjustmentFor, buildEntries, type EntryInput } from "@/lib/domain/ledger";
 import { nextOccurrence, occurrenceDates } from "@/lib/domain/recurrence";
 import type { Account, Entry } from "@/lib/domain/types";
@@ -232,6 +233,7 @@ export async function saveAccountAction(_prev: ActionState, formData: FormData):
   const row = {
     name: v.name,
     type: v.type,
+    subtype: v.subtype,
     opening_balance_cents: v.opening_balance,
     opening_balance_date: v.opening_balance_date,
     valid_until: v.type === "meal_voucher" ? v.valid_until : null,
@@ -251,8 +253,10 @@ export async function saveAccountAction(_prev: ActionState, formData: FormData):
         opening_balance: "Ce compte a déjà des opérations : corrigez le solde par un ajustement explicite (page du compte).",
       });
     }
-    if (used && current.type !== v.type && (current.type === "meal_voucher" || v.type === "meal_voucher")) {
-      return failure(INVALID, { type: "Un compte utilisé ne peut pas devenir ou cesser d'être un portefeuille de tickets." });
+    if (used && current.type !== v.type && (TYPES_LOCKED_WHEN_USED.has(current.type) || TYPES_LOCKED_WHEN_USED.has(v.type))) {
+      return failure(INVALID, {
+        subtype: "Un compte déjà utilisé ne peut pas devenir ou cesser d'être une dette, un portefeuille de tickets ou un avantage affecté.",
+      });
     }
     const { error } = await supabase.from("accounts").update(row).eq("id", v.id);
     if (error) return failure(dbErrorMessage(error));

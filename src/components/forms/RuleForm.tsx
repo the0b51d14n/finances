@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { saveRuleAction } from "@/app/actions/ledger";
 import { Field, FormMessage, useServerForm } from "@/components/ui/forms";
+import { isTransferable } from "@/lib/domain/accounts";
 import { FREQUENCY_LABELS } from "@/lib/domain/recurrence";
 import type { Certainty, Frequency } from "@/lib/domain/types";
 import { CERTAINTY_HINTS, CERTAINTY_LABELS } from "@/lib/view/labels";
@@ -42,7 +43,7 @@ export function RuleForm({
   const [certainty, setCertainty] = useState<Certainty>(initial.certainty);
   const editing = !!initial.id;
   const usable = accounts.filter((a) => !a.archived || a.id === initial.accountId || a.id === initial.toAccountId);
-  const transferable = usable.filter((a) => a.type !== "meal_voucher");
+  const transferable = usable.filter((a) => isTransferable(a.type));
   const kindCategories = categories.filter((c) => c.kind === kind && (!c.archived || c.id === initial.categoryId));
 
   return (

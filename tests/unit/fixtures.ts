@@ -18,6 +18,7 @@ export function account(id: string, type: AccountType, openingCents = 0, opening
     id,
     name: id,
     type,
+    subtype: null,
     currency: "EUR",
     openingBalanceCents: openingCents,
     openingBalanceDate: openingDate,

@@ -18,12 +18,17 @@ export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
   dedicated_savings: "Épargne spécifique",
   other: "Autre réserve",
   meal_voucher: "Tickets-restaurant",
+  investment: "Placement",
+  debt: "Crédit ou dette",
+  earmarked: "Avantage affecté",
 };
 
 export const ACCOUNT_CLASS_LABELS: Record<AccountClass, string> = {
   available: "Disponible",
   savings: "Épargne",
   reserve: "Réserve",
+  investment: "Placements",
+  debt: "Dettes",
   voucher: "Ressource affectée",
 };
 
@@ -37,10 +42,23 @@ export function accountClass(type: AccountType): AccountClass {
       return "savings";
     case "other":
       return "reserve";
+    case "investment":
+      return "investment";
+    case "debt":
+      return "debt";
     case "meal_voucher":
+    case "earmarked":
       return "voucher";
   }
 }
+
+/** Les ressources affectées (tickets, cartes cadeaux…) ne peuvent faire l'objet d'aucun transfert. */
+export function isTransferable(type: AccountType): boolean {
+  return type !== "meal_voucher" && type !== "earmarked";
+}
+
+/** Types qu'un compte déjà utilisé ne peut ni prendre ni quitter (règles d'écritures ou de signe propres). */
+export const TYPES_LOCKED_WHEN_USED: ReadonlySet<AccountType> = new Set(["meal_voucher", "earmarked", "debt"]);
 
 /** Une écriture compte dans le solde si l'opération est confirmée et datée après le solde initial. */
 export function countsInBalance(account: Account, tx: Pick<Transaction, "status" | "date">): boolean {
@@ -70,16 +88,30 @@ export function balancesAt(accounts: Account[], transactions: Transaction[], asO
 }
 
 export type BalanceTotals = {
-  /** Total des soldes : disponible + épargne + réserves (hors tickets-restaurant). */
+  /** Total des soldes : disponible + épargne + réserves + placements (hors ressources affectées et dettes). */
   totalCents: Cents;
   availableCents: Cents;
   savingsCents: Cents;
   reserveCents: Cents;
+  investmentCents: Cents;
+  /** Somme des dettes : négative ou nulle. */
+  debtCents: Cents;
   voucherCents: Cents;
+  /** Patrimoine net : total des soldes + dettes. */
+  netWorthCents: Cents;
 };
 
 export function totalsByClass(accounts: Account[], balances: Map<string, Cents>): BalanceTotals {
-  const totals: BalanceTotals = { totalCents: 0, availableCents: 0, savingsCents: 0, reserveCents: 0, voucherCents: 0 };
+  const totals: BalanceTotals = {
+    totalCents: 0,
+    availableCents: 0,
+    savingsCents: 0,
+    reserveCents: 0,
+    investmentCents: 0,
+    debtCents: 0,
+    voucherCents: 0,
+    netWorthCents: 0,
+  };
   for (const a of accounts) {
     const b = balances.get(a.id);
     if (b === undefined) continue;
@@ -93,12 +125,19 @@ export function totalsByClass(accounts: Account[], balances: Map<string, Cents>)
       case "reserve":
         totals.reserveCents += b;
         break;
+      case "investment":
+        totals.investmentCents += b;
+        break;
+      case "debt":
+        totals.debtCents += b;
+        break;
       case "voucher":
         totals.voucherCents += b;
         break;
     }
   }
-  totals.totalCents = totals.availableCents + totals.savingsCents + totals.reserveCents;
+  totals.totalCents = totals.availableCents + totals.savingsCents + totals.reserveCents + totals.investmentCents;
+  totals.netWorthCents = totals.totalCents + totals.debtCents;
   return totals;
 }
 
