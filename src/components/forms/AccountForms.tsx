@@ -47,6 +47,7 @@ export function AccountForm({
   const { state, pending, onSubmit, errors } = useServerForm(saveAccountAction, { schema: accountSchema });
   const [subtype, setSubtype] = useState<AccountSubtype>(initial.subtype);
   const type = subtypeType(subtype);
+  const groupIndex = Math.max(0, ACCOUNT_KIND_GROUPS.findIndex((g) => g.kinds.includes(subtype)));
   const openingLabel = type === "debt" ? "Montant restant dû (€)" : type === "investment" ? "Valeur initiale (€)" : "Solde initial (€)";
   const openingHint = openingLocked
     ? "Compte déjà utilisé : corrigez le solde par un ajustement."
@@ -63,16 +64,26 @@ export function AccountForm({
         <Field id="name" label="Nom du compte" error={errors.name}>
           <input id="name" name="name" className="input" maxLength={80} defaultValue={initial.name} placeholder="Ex. Compte courant" required />
         </Field>
+        <Field id="kind_group" label="Famille">
+          <select
+            id="kind_group"
+            className="select"
+            value={groupIndex}
+            onChange={(e) => setSubtype(ACCOUNT_KIND_GROUPS[Number(e.target.value)].kinds[0])}
+          >
+            {ACCOUNT_KIND_GROUPS.map((group, i) => (
+              <option key={group.label} value={i}>
+                {group.label}
+              </option>
+            ))}
+          </select>
+        </Field>
         <Field id="subtype" label="Type de compte" error={errors.subtype} hint={`Classe : ${ACCOUNT_CLASS_LABELS[accountClass(type)]}`}>
           <select id="subtype" name="subtype" className="select" value={subtype} onChange={(e) => setSubtype(e.target.value as AccountSubtype)}>
-            {ACCOUNT_KIND_GROUPS.map((group) => (
-              <optgroup key={group.label} label={group.label}>
-                {group.kinds.map((kind) => (
-                  <option key={kind} value={kind}>
-                    {ACCOUNT_SUBTYPES[kind].label}
-                  </option>
-                ))}
-              </optgroup>
+            {ACCOUNT_KIND_GROUPS[groupIndex].kinds.map((kind) => (
+              <option key={kind} value={kind}>
+                {ACCOUNT_SUBTYPES[kind].label}
+              </option>
             ))}
           </select>
         </Field>
