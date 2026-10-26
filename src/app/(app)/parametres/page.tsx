@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { signOutAction } from "@/app/actions/auth";
 import { archiveCategoryAction, deleteCategoryAction } from "@/app/actions/settings";
-import { CategoryForm, DeleteDataForm, SettingsForm } from "@/components/forms/SettingsForms";
+import { CategoryForm, DeleteDataForm, RestoreBackupForm, SettingsForm } from "@/components/forms/SettingsForms";
 import { toAccountOptions } from "@/components/forms/options";
 import { ActionButton } from "@/components/ui/forms";
 import { Icon } from "@/components/ui/Icon";
@@ -26,6 +26,7 @@ async function Settings() {
   for (const t of data.transactions) if (t.categoryId) used.add(t.categoryId);
   for (const r of data.rules) if (r.categoryId) used.add(r.categoryId);
   for (const b of data.budgets) used.add(b.categoryId);
+  const isEmpty = [data.accounts, data.transactions, data.rules, data.budgets, data.goals, data.purchasePlans].every((list) => list.length === 0);
 
   const categoryList = (kind: "expense" | "income") => (
     <ul className="list">
@@ -107,6 +108,8 @@ async function Settings() {
             <Icon name="download" size={16} /> Opérations (CSV, Excel)
           </a>
         </div>
+        <div className="divider" />
+        <RestoreBackupForm empty={isEmpty} />
       </section>
 
       <section className="card stack-sm">

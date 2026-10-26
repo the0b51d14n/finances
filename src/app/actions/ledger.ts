@@ -7,7 +7,7 @@ import { addDays, todayParis } from "@/lib/dates";
 import { dbErrorMessage } from "@/lib/data/errors";
 import { ACCOUNT_COLUMNS, RULE_COLUMNS, toAccount, toRule } from "@/lib/data/mappers";
 import { getSession } from "@/lib/data/session";
-import { TYPES_LOCKED_WHEN_USED } from "@/lib/domain/accounts";
+import { typeChangeAllowed } from "@/lib/domain/accounts";
 import { adjustmentFor, buildEntries, type EntryInput } from "@/lib/domain/ledger";
 import { nextOccurrence, occurrenceDates } from "@/lib/domain/recurrence";
 import type { Account, Entry } from "@/lib/domain/types";
@@ -253,9 +253,10 @@ export async function saveAccountAction(_prev: ActionState, formData: FormData):
         opening_balance: "Ce compte a déjà des opérations : corrigez le solde par un ajustement explicite (page du compte).",
       });
     }
-    if (used && current.type !== v.type && (TYPES_LOCKED_WHEN_USED.has(current.type) || TYPES_LOCKED_WHEN_USED.has(v.type))) {
+    if (!typeChangeAllowed(current.type, v.type, used)) {
       return failure(INVALID, {
-        subtype: "Un compte déjà utilisé ne peut pas devenir ou cesser d'être une dette, un portefeuille de tickets ou un avantage affecté.",
+        subtype:
+          "Ce compte a déjà des opérations : il peut changer de type seulement dans la même famille (ex. Livret d'épargne → Livret A). Archivez-le et créez un nouveau compte.",
       });
     }
     const { error } = await supabase.from("accounts").update(row).eq("id", v.id);

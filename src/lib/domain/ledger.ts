@@ -111,6 +111,79 @@ export function expenseSplit(tx: Pick<Transaction, "kind" | "entries" | "amountC
   return { totalCents: tx.amountCents, voucherCents, otherCents: tx.amountCents - voucherCents };
 }
 
+/**
+ * Opérations probablement saisies deux fois : même type, date, montant,
+ * libellé (casse ignorée), note et mêmes écritures. Les opérations annulées
+ * sont ignorées. Deux achats identiques légitimes se distinguent par une note.
+ */
+export function possibleDuplicates(transactions: Transaction[]): Transaction[][] {
+  const groups = new Map<string, Transaction[]>();
+  for (const tx of transactions) {
+    if (tx.status === "cancelled") continue;
+    const entries = tx.entries.map((e) => `${e.accountId}:${e.amountCents}`).sort().join(",");
+    const key = [tx.kind, tx.date, tx.amountCents, tx.label.trim().toLowerCase(), (tx.notes ?? "").trim(), entries].join("|");
+    const group = groups.get(key);
+    if (group) group.push(tx);
+    else groups.set(key, [tx]);
+  }
+  return [...groups.values()].filter((g) => g.length > 1);
+}
+
+export type FrequentOperation = {
+  kind: "expense" | "income" | "transfer";
+  label: string;
+  amountCents: Cents;
+  accountId: string;
+  toAccountId: string | null;
+  categoryId: string | null;
+  count: number;
+};
+
+/**
+ * Modèles de saisie rapide : opérations confirmées répétées (même type,
+ * libellé, catégorie et compte) depuis `since`, avec le dernier montant saisi.
+ * Les échéances récurrentes sont exclues (elles se confirment depuis le calendrier).
+ */
+export function frequentOperations(transactions: Transaction[], since: string, limit = 6): FrequentOperation[] {
+  const groups = new Map<string, FrequentOperation & { lastDate: string }>();
+  for (const tx of transactions) {
+    if (tx.status !== "confirmed" || tx.date < since || tx.recurrenceId || tx.kind === "adjustment") continue;
+    const from = tx.kind === "transfer" ? tx.entries.find((e) => e.amountCents < 0) : tx.entries.find((e) => e.amountCents !== 0);
+    const to = tx.kind === "transfer" ? tx.entries.find((e) => e.amountCents > 0) : undefined;
+    if (!from) continue;
+    const key = [tx.kind, tx.label.trim().toLowerCase(), tx.categoryId ?? "", from.accountId, to?.accountId ?? ""].join("|");
+    const current = groups.get(key);
+    if (current) {
+      current.count += 1;
+      if (tx.date > current.lastDate) Object.assign(current, { lastDate: tx.date, amountCents: tx.amountCents, label: tx.label });
+    } else {
+      groups.set(key, {
+        kind: tx.kind,
+        label: tx.label,
+        amountCents: tx.amountCents,
+        accountId: from.accountId,
+        toAccountId: to?.accountId ?? null,
+        categoryId: tx.categoryId,
+        count: 1,
+        lastDate: tx.date,
+      });
+    }
+  }
+  return [...groups.values()]
+    .filter((g) => g.count >= 2)
+    .sort((a, b) => b.count - a.count || b.lastDate.localeCompare(a.lastDate))
+    .slice(0, limit)
+    .map((g) => ({
+      kind: g.kind,
+      label: g.label,
+      amountCents: g.amountCents,
+      accountId: g.accountId,
+      toAccountId: g.toAccountId,
+      categoryId: g.categoryId,
+      count: g.count,
+    }));
+}
+
 /** Reconstitue la saisie d'origine à partir des écritures (pour l'édition). */
 export function entriesToInput(
   tx: Pick<Transaction, "kind" | "entries" | "amountCents">,

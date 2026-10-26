@@ -4,7 +4,7 @@ import { useState } from "react";
 import { adjustBalanceAction, saveAccountAction } from "@/app/actions/ledger";
 import { Field, FormMessage, useServerForm } from "@/components/ui/forms";
 import { ACCOUNT_KIND_GROUPS, ACCOUNT_SUBTYPES, type AccountSubtype, subtypeType } from "@/lib/domain/account-kinds";
-import { ACCOUNT_CLASS_LABELS, accountClass } from "@/lib/domain/accounts";
+import { ACCOUNT_CLASS_LABELS, accountClass, accountTypeRules, type AccountTypeRules } from "@/lib/domain/accounts";
 import type { AccountType } from "@/lib/domain/types";
 import { formatCents } from "@/lib/money";
 import { accountSchema, balanceAdjustmentSchema } from "@/lib/validation/schemas";
@@ -22,6 +22,14 @@ const TYPE_HELP: Record<AccountType, string> = {
   meal_voucher: "Ressource affectée : ni dans l'argent disponible ni dans le total des soldes.",
   earmarked: "Ressource affectée : ni dans l'argent disponible ni dans le total. Elle sert à payer des dépenses, sans transfert possible.",
 };
+
+const NEGATIVE_LABELS: Record<AccountTypeRules["negativeBalance"], string> = {
+  allowed: "autorisé",
+  forbidden: "interdit",
+  required: "toujours (montant dû)",
+};
+
+const yes = (v: boolean) => (v ? "oui" : "non");
 
 export type AccountFormValues = {
   id?: string;
@@ -47,6 +55,7 @@ export function AccountForm({
   const { state, pending, onSubmit, errors } = useServerForm(saveAccountAction, { schema: accountSchema });
   const [subtype, setSubtype] = useState<AccountSubtype>(initial.subtype);
   const type = subtypeType(subtype);
+  const rules = accountTypeRules(type);
   const groupIndex = Math.max(0, ACCOUNT_KIND_GROUPS.findIndex((g) => g.kinds.includes(subtype)));
   const openingLabel = type === "debt" ? "Montant restant dû (€)" : type === "investment" ? "Valeur initiale (€)" : "Solde initial (€)";
   const openingHint = openingLocked
@@ -121,7 +130,7 @@ export function AccountForm({
           id="opening_balance_date"
           label="Date de référence"
           error={errors.opening_balance_date}
-          hint="Les opérations antérieures à cette date n'affectent pas le solde."
+          hint="Le solde initial est le montant du compte au début de ce jour. Ex. : 500 € au 1er octobre, une dépense de 50 € le 3 octobre donne 450 € ; une opération du 20 septembre reste dans l'historique sans être déduite une seconde fois."
         >
           <input
             id="opening_balance_date"
@@ -140,6 +149,10 @@ export function AccountForm({
         </Field>
       )}
       <p className="faint small">{TYPE_HELP[type]}</p>
+      <p className="faint tiny" aria-label="Règles de calcul de ce type">
+        Argent disponible : {yes(rules.inAvailable)} · Épargne : {yes(rules.inSavings)} · Total des soldes : {yes(rules.inTotal)} · Patrimoine net :{" "}
+        {yes(rules.inNetWorth)} · Solde négatif : {NEGATIVE_LABELS[rules.negativeBalance]} · Virements : {rules.transferable ? "autorisés" : "interdits"}
+      </p>
       <Field id="notes" label="Notes (facultatif)" error={errors.notes}>
         <textarea id="notes" name="notes" className="textarea" maxLength={1000} defaultValue={initial.notes} />
       </Field>

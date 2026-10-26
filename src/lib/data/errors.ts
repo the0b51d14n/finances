@@ -12,6 +12,10 @@ const KNOWN: [RegExp, string][] = [
   [/transaction_not_found|rule_not_found/, "Élément introuvable ou inaccessible."],
   [/not_authenticated/, "Votre session a expiré : reconnectez-vous."],
   [/confirmation_required/, "Confirmation manquante."],
+  [
+    /import_requires_empty/,
+    "La restauration n'est possible que sur un espace vide : exportez vos données actuelles, puis utilisez « Supprimer toutes mes données » avant de restaurer.",
+  ],
   [/recurrence_id_occurrence_date/, "Cette échéance a déjà été enregistrée."],
   [/categories_user_kind_name_uniq/, "Une catégorie de ce type porte déjà ce nom."],
   [/budgets_user_id_category_id_period_key/, "Un budget existe déjà pour cette catégorie et cette période."],

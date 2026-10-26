@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { balancesAt, totalsByClass } from "@/lib/domain/accounts";
+import { accountTypeRules, balancesAt, totalsByClass, typeChangeAllowed } from "@/lib/domain/accounts";
 import { budgetPeriodRange, evaluateBudget, spentInRange } from "@/lib/domain/budgets";
 import { goalAccumulated, goalProgress, overAllocatedAccounts } from "@/lib/domain/goals";
-import { adjustmentFor, buildEntries, entriesToInput, expenseSplit } from "@/lib/domain/ledger";
+import { adjustmentFor, buildEntries, entriesToInput, expenseSplit, frequentOperations, possibleDuplicates } from "@/lib/domain/ledger";
 import { listOccurrences, monthlyEquivalentCents, occurrenceDates, realizationIndex } from "@/lib/domain/recurrence";
 import type { SavingsGoal } from "@/lib/domain/types";
 import { account, byId, expense, income, rule, transfer, tx } from "./fixtures";
@@ -64,6 +64,38 @@ describe("écritures d'une opération", () => {
   });
 });
 
+describe("saisie rapide et doublons", () => {
+  it("repère les opérations saisies deux fois, sauf annulées ou distinguées par une note", () => {
+    const a = expense("2026-10-03", 1_250, "chk", { label: "Boulangerie" });
+    const b = expense("2026-10-03", 1_250, "chk", { label: "boulangerie " });
+    const cancelled = expense("2026-10-03", 1_250, "chk", { label: "Boulangerie", status: "cancelled", confirmedAt: null });
+    const noted = expense("2026-10-03", 1_250, "chk", { label: "Boulangerie", notes: "second achat" });
+    const groups = possibleDuplicates([a, b, cancelled, noted, expense("2026-10-04", 1_250, "chk", { label: "Boulangerie" })]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].map((t) => t.id)).toEqual([a.id, b.id]);
+  });
+
+  it("propose les opérations répétées avec leur dernier montant, sans les échéances récurrentes", () => {
+    const txs = [
+      expense("2026-10-10", 450, "chk", { label: "Café", categoryId: "cat-food" }),
+      expense("2026-10-02", 400, "chk", { label: "Café", categoryId: "cat-food" }),
+      expense("2026-10-05", 3_000, "chk", { label: "Courses", categoryId: "cat-food" }),
+      transfer("2026-10-01", 2_000, "chk", "liv", { label: "Vers Boursorama" }),
+      transfer("2026-10-08", 3_000, "chk", "liv", { label: "Vers Boursorama" }),
+      expense("2026-10-01", 1_500, "chk", { label: "Téléphone", recurrenceId: "r", occurrenceDate: "2026-10-01" }),
+      expense("2026-10-15", 1_500, "chk", { label: "Téléphone", recurrenceId: "r", occurrenceDate: "2026-10-15" }),
+      expense("2026-06-01", 999, "chk", { label: "Ancien" }),
+      expense("2026-06-02", 999, "chk", { label: "Ancien" }),
+    ];
+    const ops = frequentOperations(txs, "2026-07-01");
+    expect(ops.map((o) => [o.label, o.amountCents, o.count])).toEqual([
+      ["Café", 450, 2],
+      ["Vers Boursorama", 3_000, 2],
+    ]);
+    expect(ops[1]).toMatchObject({ kind: "transfer", accountId: "chk", toAccountId: "liv" });
+  });
+});
+
 describe("soldes", () => {
   const transactions = [
     income("2026-02-01", 120_000, "chk"),
@@ -115,6 +147,32 @@ describe("soldes", () => {
     // Rembourser une dette ne change pas le patrimoine net : seule la revalorisation du PEA le modifie.
     const before = totalsByClass(all, balancesAt(all, [], "2026-02-28"));
     expect(totals.netWorthCents - before.netWorthCents).toBe(15_000);
+  });
+
+  it("applique à chaque type exactement les règles annoncées (disponible, épargne, total, patrimoine)", () => {
+    const types = ["checking", "cash", "savings", "dedicated_savings", "other", "meal_voucher", "investment", "debt", "earmarked"] as const;
+    for (const type of types) {
+      const balance = type === "debt" ? -10_000 : 10_000;
+      const acc = account("x", type, balance);
+      const totals = totalsByClass([acc], balancesAt([acc], [], "2026-02-01"));
+      const rules = accountTypeRules(type);
+      expect(totals.availableCents, type).toBe(rules.inAvailable ? balance : 0);
+      expect(totals.savingsCents, type).toBe(rules.inSavings ? balance : 0);
+      expect(totals.totalCents, type).toBe(rules.inTotal ? balance : 0);
+      expect(totals.netWorthCents, type).toBe(rules.inNetWorth ? balance : 0);
+    }
+    expect(accountTypeRules("debt").negativeBalance).toBe("required");
+    expect(accountTypeRules("earmarked")).toMatchObject({ negativeBalance: "forbidden", transferable: false });
+    expect(accountTypeRules("checking")).toMatchObject({ negativeBalance: "allowed", transferable: true });
+  });
+
+  it("interdit à un compte utilisé de changer de classe comptable", () => {
+    expect(typeChangeAllowed("checking", "investment", false)).toBe(true);
+    expect(typeChangeAllowed("checking", "investment", true)).toBe(false);
+    expect(typeChangeAllowed("savings", "dedicated_savings", true)).toBe(true);
+    expect(typeChangeAllowed("checking", "cash", true)).toBe(true);
+    expect(typeChangeAllowed("meal_voucher", "earmarked", true)).toBe(false);
+    expect(typeChangeAllowed("debt", "debt", true)).toBe(true);
   });
 
   it("refuse les transferts d'avantages affectés", () => {

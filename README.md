@@ -14,9 +14,9 @@ sur iPhone (PWA).
 Prérequis : Node.js 20.9 ou plus récent, un projet Supabase gratuit.
 
 1. Installer les dépendances : `npm install`
-2. Créer la base : dans Supabase → **SQL Editor**, exécuter le contenu de
-   `supabase/migrations/20261025000001_initial_schema.sql` (ou `supabase db push`
-   avec la CLI Supabase).
+2. Créer la base : dans Supabase → **SQL Editor**, exécuter **dans l'ordre**
+   chacun des fichiers de `supabase/migrations/` (ou `supabase db push` avec la
+   CLI Supabase). Chaque nouvelle migration s'exécute une seule fois.
 3. Copier `.env.example` en `.env.local` et renseigner :
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (clé « publishable » ou « anon »)
@@ -61,8 +61,9 @@ utilisateurs, sans compte Supabase.
   (journal `transaction_audit`) ; tables comptables en lecture seule côté client.
 - Protection contre la double soumission (identifiant de requête unique).
 - Aucun identifiant bancaire demandé ; aucune donnée saisie dans les journaux.
-- Export JSON (sauvegarde complète) et CSV depuis Paramètres ; suppression de
-  toutes les données avec confirmation.
+- Export JSON (sauvegarde complète) et CSV depuis Paramètres ; restauration
+  d'une sauvegarde JSON dans un espace vide (tout ou rien, rien n'est écrasé) ;
+  suppression de toutes les données avec confirmation.
 
 ## Structure
 
@@ -82,6 +83,7 @@ tests/                 Tests unitaires et d'intégration
 - Pas de connexion bancaire automatique (volontaire).
 - Pas de saisie hors ligne : l'application signale la perte de connexion ;
   les données restent sur Supabase et sont synchronisées entre appareils.
-- Pas d'import de sauvegarde JSON (export uniquement).
+- La restauration d'une sauvegarde JSON exige un espace vide (pas de fusion) et
+  un fichier de 4 Mo au plus (limite des fonctions Vercel).
 - Alertes affichées dans l'application, sans notification push.
 - Supprimer l'identifiant de connexion lui-même se fait depuis le tableau de bord Supabase.

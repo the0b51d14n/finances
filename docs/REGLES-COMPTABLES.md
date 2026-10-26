@@ -80,8 +80,24 @@ Chaque compte a une **nature** (Livret A, PEA, crédit immobilier…, liste dans
   courant ; un compte « découvert » le compterait deux fois.
 - **Avantages affectés** : comme les tickets-restaurant, ils paient des
   dépenses mais ne peuvent faire l'objet d'aucun transfert.
-- Un compte déjà utilisé ne peut ni devenir ni cesser d'être une dette, un
-  portefeuille de tickets ou un avantage affecté.
+- Un compte qui a des opérations garde sa **classe** : seule sa nature peut
+  changer au sein de la même classe (ex. Livret d'épargne → Livret A). Il ne
+  peut jamais devenir ni cesser d'être une dette, un portefeuille de tickets ou
+  un avantage affecté. Sinon, l'archiver et créer un nouveau compte.
+
+Règles par type (fonction `accountTypeRules`, vérifiée par les tests contre
+les totaux calculés) :
+
+| Type               | Disponible | Épargne | Total des soldes | Patrimoine net | Solde négatif | Virements |
+|--------------------|:----------:|:-------:|:----------------:|:--------------:|---------------|:---------:|
+| Compte courant     | oui        | non     | oui              | oui            | autorisé      | oui       |
+| Espèces            | oui        | non     | oui              | oui            | interdit      | oui       |
+| Livret / épargne   | non        | oui     | oui              | oui            | autorisé      | oui       |
+| Autre réserve      | non        | non     | oui              | oui            | autorisé      | oui       |
+| Placement          | non        | non     | oui              | oui            | autorisé      | oui       |
+| Crédit ou dette    | non        | non     | non              | oui (en moins) | toujours      | oui       |
+| Tickets-restaurant | non        | non     | non              | non            | interdit      | non       |
+| Avantage affecté   | non        | non     | non              | non            | interdit      | non       |
 
 ## 5. Indicateurs
 
@@ -209,6 +225,20 @@ grande marge, sans jamais rendre ce dernier négatif. Le montant est arrondi aux
 veille du découvert prévu. Si aucun compte ne peut couvrir le manque, une alerte
 le signale. Les enveloppes budgétaires et les achats sans compte précisé sont
 imputés au **compte de dépenses courantes** choisi dans les Paramètres.
+
+## 12 quater. Saisie rapide, doublons et sauvegardes
+
+- **Saisie rapide** : les opérations confirmées répétées au moins deux fois sur
+  120 jours (même type, libellé, catégorie et compte, hors échéances
+  récurrentes) sont proposées comme modèles, avec le dernier montant saisi.
+- **Doublons possibles** : opérations non annulées de même type, date, montant,
+  libellé (casse ignorée), note et écritures, sur 90 jours. Un simple
+  signalement : rien n'est supprimé automatiquement ; une note distingue deux
+  opérations identiques légitimes.
+- **Restauration** : une sauvegarde JSON est revérifiée champ par champ, puis
+  importée en une seule transaction SQL, uniquement dans un espace vide, avec de
+  nouveaux identifiants ; au moindre écart (écritures déséquilibrées, référence
+  manquante), rien n'est importé.
 
 ## 13. Objectifs d'épargne
 

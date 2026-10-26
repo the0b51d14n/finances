@@ -3,9 +3,11 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { TransactionList } from "@/components/ledger/TransactionList";
 import { Icon } from "@/components/ui/Icon";
-import { PageHeader, PageSkeleton, StatTile } from "@/components/ui/primitives";
-import { isValidIsoDate } from "@/lib/dates";
+import { Notice, PageHeader, PageSkeleton, StatTile } from "@/components/ui/primitives";
+import { addDays, formatDate, isValidIsoDate } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
+import { possibleDuplicates } from "@/lib/domain/ledger";
+import { formatCents } from "@/lib/money";
 import { KIND_LABELS, STATUS_LABELS } from "@/lib/view/labels";
 
 export const metadata: Metadata = { title: "Opérations" };
@@ -58,6 +60,7 @@ async function Operations({ searchParams }: { searchParams: Promise<Search> }) {
   const income = confirmed.filter((t) => t.kind === "income").reduce((s, t) => s + t.amountCents, 0);
   const expense = confirmed.filter((t) => t.kind === "expense").reduce((s, t) => s + t.amountCents, 0);
   const hasFilters = !!(q || account || category || kind || status || from || to);
+  const duplicates = possibleDuplicates(data.transactions.filter((t) => t.date >= addDays(data.today, -90)));
 
   const pageHref = (p: number) => {
     const sp = new URLSearchParams();
@@ -169,6 +172,27 @@ async function Operations({ searchParams }: { searchParams: Promise<Search> }) {
           )}
         </div>
       </form>
+
+      {duplicates.length > 0 && (
+        <Notice tone="warning" title={`${duplicates.length} opération(s) peut-être saisie(s) en double`}>
+          <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+            {duplicates.slice(0, 5).map((group) => (
+              <li key={group[0].id}>
+                « {group[0].label} » {formatCents(group[0].amountCents)} le {formatDate(group[0].date, "short")} :{" "}
+                {group.map((t, i) => (
+                  <span key={t.id}>
+                    {i > 0 && ", "}
+                    <Link href={`/operations/${t.id}`} className="link">
+                      saisie {i + 1}
+                    </Link>
+                  </span>
+                ))}
+              </li>
+            ))}
+          </ul>
+          <span className="faint small">S&apos;il s&apos;agit bien de deux opérations distinctes, ajoutez une note à l&apos;une d&apos;elles.</span>
+        </Notice>
+      )}
 
       {hasFilters && (
         <section className="grid-stats">

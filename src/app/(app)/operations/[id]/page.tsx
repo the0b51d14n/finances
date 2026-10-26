@@ -135,6 +135,11 @@ async function Operation({ params }: { params: PageProps<"/operations/[id]">["pa
               Repasser en prévue
             </ActionButton>
           )}
+          {tx.kind !== "adjustment" && (
+            <Link href={`/operations/nouvelle?dupliquer=${tx.id}&retour=/operations`} className="btn btn-sm">
+              <Icon name="plus" size={14} /> Dupliquer
+            </Link>
+          )}
           <ActionButton
             action={deleteTransactionAction}
             fields={{ id: tx.id, return_to: "/operations" }}

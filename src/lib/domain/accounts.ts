@@ -52,13 +52,47 @@ export function accountClass(type: AccountType): AccountClass {
   }
 }
 
+export type AccountTypeRules = {
+  inAvailable: boolean;
+  inSavings: boolean;
+  /** Compté dans le total des soldes (avoirs). */
+  inTotal: boolean;
+  /** Compté dans le patrimoine net (avoirs − dettes). */
+  inNetWorth: boolean;
+  negativeBalance: "allowed" | "forbidden" | "required";
+  transferable: boolean;
+};
+
+/** Règles appliquées à chaque type de compte (même source que les calculs, les formulaires et la base). */
+export function accountTypeRules(type: AccountType): AccountTypeRules {
+  const cls = accountClass(type);
+  return {
+    inAvailable: cls === "available",
+    inSavings: cls === "savings",
+    inTotal: cls === "available" || cls === "savings" || cls === "reserve" || cls === "investment",
+    inNetWorth: cls !== "voucher",
+    negativeBalance: type === "debt" ? "required" : type === "cash" || cls === "voucher" ? "forbidden" : "allowed",
+    transferable: isTransferable(type),
+  };
+}
+
 /** Les ressources affectées (tickets, cartes cadeaux…) ne peuvent faire l'objet d'aucun transfert. */
 export function isTransferable(type: AccountType): boolean {
   return type !== "meal_voucher" && type !== "earmarked";
 }
 
 /** Types qu'un compte déjà utilisé ne peut ni prendre ni quitter (règles d'écritures ou de signe propres). */
-export const TYPES_LOCKED_WHEN_USED: ReadonlySet<AccountType> = new Set(["meal_voucher", "earmarked", "debt"]);
+const TYPES_LOCKED_WHEN_USED: ReadonlySet<AccountType> = new Set(["meal_voucher", "earmarked", "debt"]);
+
+/**
+ * Un compte qui a des opérations garde sa classe comptable (sinon l'historique
+ * des analyses changerait rétroactivement) ; seule sa nature précise peut
+ * changer au sein de la même classe (ex. Livret d'épargne → Livret A).
+ */
+export function typeChangeAllowed(from: AccountType, to: AccountType, used: boolean): boolean {
+  if (!used || from === to) return true;
+  return accountClass(from) === accountClass(to) && !TYPES_LOCKED_WHEN_USED.has(from) && !TYPES_LOCKED_WHEN_USED.has(to);
+}
 
 /** Une écriture compte dans le solde si l'opération est confirmée et datée après le solde initial. */
 export function countsInBalance(account: Account, tx: Pick<Transaction, "status" | "date">): boolean {

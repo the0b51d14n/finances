@@ -478,6 +478,112 @@ describe("natures de comptes", () => {
   });
 });
 
+describe("restauration d'une sauvegarde", () => {
+  const backup = {
+    accounts: [
+      { id: "a-chk", name: "Courant", type: "checking", subtype: "current", opening_balance_cents: 100_000, opening_balance_date: "2026-10-01" },
+      { id: "a-liv", name: "Livret A", type: "savings", subtype: "livret_a", opening_balance_cents: 50_000, opening_balance_date: "2026-10-01" },
+    ],
+    categories: [
+      { id: "c-furn", kind: "expense", name: "Équipement", system_key: "home_furnishing", sort_order: 5 },
+      { id: "c-sal", kind: "income", name: "Salaire d'alternance", system_key: "salary_apprentice" },
+      { id: "c-pets", kind: "expense", name: "Animaux", system_key: null },
+    ],
+    rules: [
+      {
+        id: "r-sal",
+        kind: "income",
+        label: "Salaire",
+        amount_cents: 53_000,
+        account_id: "a-chk",
+        category_id: "c-sal",
+        frequency: "monthly",
+        start_date: "2026-10-02",
+        tracking_start: "2026-10-01",
+        certainty: "certain",
+        is_active: true,
+      },
+    ],
+    transactions: [
+      {
+        kind: "income",
+        status: "confirmed",
+        date: "2026-10-02",
+        label: "Salaire",
+        amount_cents: 53_000,
+        category_id: "c-sal",
+        recurrence_id: "r-sal",
+        occurrence_date: "2026-10-02",
+        entries: [{ account_id: "a-chk", amount_cents: 53_000 }],
+      },
+      {
+        kind: "expense",
+        status: "confirmed",
+        date: "2026-10-03",
+        label: "Croquettes",
+        amount_cents: 2_000,
+        category_id: "c-pets",
+        entries: [{ account_id: "a-chk", amount_cents: -2_000 }],
+      },
+      {
+        kind: "transfer",
+        status: "confirmed",
+        date: "2026-10-04",
+        label: "Épargne",
+        amount_cents: 10_000,
+        entries: [
+          { account_id: "a-chk", amount_cents: -10_000 },
+          { account_id: "a-liv", amount_cents: 10_000 },
+        ],
+      },
+    ],
+    budgets: [{ category_id: "c-pets", period: "monthly", amount_cents: 3_000, is_active: true }],
+    goals: [{ id: "g-dep", name: "Dépôt", target_cents: 120_000, priority: 1, tracking: "account", account_id: "a-liv" }],
+    allocations: [],
+    purchase_plans: [{ name: "Lit", price_cents: 25_000, priority: 1, status: "active", account_id: "a-chk", category_id: "c-furn", goal_id: "g-dep" }],
+    settings: { safety_reserve_cents: 20_000, spending_account_id: "a-chk" },
+  };
+
+  it("restaure toutes les données avec de nouveaux identifiants et des soldes identiques", async () => {
+    const erin = await t.createUser();
+    const [res] = await t.asUser<{ r: Row }>(erin, "select public.import_backup($1::jsonb) as r", [JSON.stringify(backup)]);
+    expect(res.r).toMatchObject({ accounts: 2, transactions: 3, rules: 1, goals: 1, purchases: 1 });
+
+    const accounts = await t.asUser<{ id: string; name: string }>(erin, "select id, name from public.accounts order by name");
+    const chk = accounts.find((a) => a.name === "Courant")!.id;
+    const liv = accounts.find((a) => a.name === "Livret A")!.id;
+    expect(chk).not.toBe("a-chk");
+    expect(await balance(erin, chk)).toBe(100_000 + 53_000 - 2_000 - 10_000);
+    expect(await balance(erin, liv)).toBe(60_000);
+
+    // Catégorie par défaut reprise (renommée), catégorie personnalisée recréée.
+    const [furn] = await t.asUser<Row>(erin, "select name, sort_order from public.categories where system_key = 'home_furnishing'");
+    expect(furn).toMatchObject({ name: "Équipement", sort_order: 5 });
+    expect(await t.asUser(erin, "select 1 from public.categories where name = 'Animaux'")).toHaveLength(1);
+    // Échéance réalisée toujours liée à sa règle, paramètres et achat rattachés aux nouveaux comptes.
+    const [linked] = await t.asUser<Row>(
+      erin,
+      "select r.label from public.transactions t join public.recurring_rules r on r.id = t.recurrence_id where t.occurrence_date = '2026-10-02'",
+    );
+    expect(linked.label).toBe("Salaire");
+    const [settings] = await t.asUser<Row>(erin, "select spending_account_id, safety_reserve_cents from public.user_settings");
+    expect(settings).toMatchObject({ spending_account_id: chk, safety_reserve_cents: 20_000 });
+    const [plan] = await t.asUser<Row>(erin, "select account_id from public.purchase_plans");
+    expect(plan.account_id).toBe(chk);
+
+    // Rien n'est jamais écrasé : un second import est refusé.
+    await expect(t.asUser(erin, "select public.import_backup($1::jsonb)", [JSON.stringify(backup)])).rejects.toThrow(/import_requires_empty/);
+  });
+
+  it("n'importe rien si une seule opération est incohérente (tout ou rien)", async () => {
+    const frank = await t.createUser();
+    const broken = structuredClone(backup);
+    broken.transactions[2].entries[1].amount_cents = 9_000; // transfert déséquilibré
+    await expect(t.asUser(frank, "select public.import_backup($1::jsonb)", [JSON.stringify(broken)])).rejects.toThrow(/ledger_unbalanced/);
+    expect(await t.asUser(frank, "select 1 from public.accounts")).toHaveLength(0);
+  });
+});
+
 describe("contrôle des accès", () => {
   let aliceAccount: string;
   let aliceTx: string;

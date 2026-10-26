@@ -113,6 +113,8 @@ export type DashboardData = {
   nextIncome: ForecastEvent | null;
   reservedUntil: IsoDate;
   reservedCents: Cents;
+  /** Sorties qui composent reservedCents (détail du reste à vivre). */
+  reservedEvents: ForecastEvent[];
   remainingUntilIncomeCents: Cents;
   daysUntilIncome: number | null;
   perDayCents: Cents | null;
@@ -136,7 +138,8 @@ export function computeDashboard(input: DashboardInput): DashboardData {
 
   const income = nextIncome(events, "guaranteed", today);
   const reservedUntil = income ? income.date : addDays(today, DEFAULT_RESERVATION_DAYS);
-  const reservedCents = scheduledOutflows(events, today, reservedUntil).reduce((s, e) => s - e.deltaCents, 0);
+  const reservedEvents = scheduledOutflows(events, today, reservedUntil);
+  const reservedCents = reservedEvents.reduce((s, e) => s - e.deltaCents, 0);
   const remainingUntilIncomeCents = totals.availableCents - reservedCents - settings.safetyReserveCents;
   const daysUntilIncome = income ? Math.max(1, diffDays(today, income.date)) : null;
   const perDayCents = daysUntilIncome ? Math.floor(Math.max(0, remainingUntilIncomeCents) / daysUntilIncome) : null;
@@ -245,6 +248,7 @@ export function computeDashboard(input: DashboardInput): DashboardData {
     nextIncome: income,
     reservedUntil,
     reservedCents,
+    reservedEvents,
     remainingUntilIncomeCents,
     daysUntilIncome,
     perDayCents,

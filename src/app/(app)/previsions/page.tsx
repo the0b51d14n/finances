@@ -369,6 +369,48 @@ async function Forecast({ searchParams }: { searchParams: Promise<Search> }) {
         )}
       </section>
 
+      {hasAvailable && (
+        <section className="card">
+          <div className="card-header">
+            <h2>D&apos;où vient le reste à vivre ?</h2>
+            <span className="faint small">Scénario garanti, jusqu&apos;au {formatDate(dash.reservedUntil, "short")}</span>
+          </div>
+          <ul className="list">
+            <li>
+              <span>Argent disponible aujourd&apos;hui</span>
+              <Amount cents={totals.availableCents} signed />
+            </li>
+            {dash.reservedEvents.map((e, i) => (
+              <li key={i}>
+                <span className="list-main">
+                  <span>{e.source === "budget" ? `Enveloppe ${categoriesById.get(e.categoryId ?? "")?.name ?? "budget"}` : e.label}</span>
+                  <span className="faint tiny">
+                    {formatDate(e.date, "short")} · {SOURCE_LABELS[e.source]}
+                  </span>
+                </span>
+                <Amount cents={e.deltaCents} signed />
+              </li>
+            ))}
+            {settings.safetyReserveCents > 0 && (
+              <li>
+                <span>Réserve de sécurité (Paramètres)</span>
+                <Amount cents={-settings.safetyReserveCents} signed />
+              </li>
+            )}
+            <li>
+              <strong>Reste à vivre</strong>
+              <Amount cents={dash.remainingUntilIncomeCents} signed colored className="num" />
+            </li>
+          </ul>
+          <p className="faint small">
+            {dash.nextIncome
+              ? `Le prochain revenu certain (${dash.nextIncome.label}, ${formatCents(dash.nextIncome.grossCents)}) arrive le ${formatDate(dash.nextIncome.date, "short")} : il n'est pas compté ici.`
+              : "Aucun revenu certain programmé : le calcul couvre les 30 prochains jours."}{" "}
+            Les revenus probables ou incertains ne sont jamais comptés.
+          </p>
+        </section>
+      )}
+
       <section className="card">
         <div className="card-header">
           <h2>Mouvements prévus (60 jours)</h2>

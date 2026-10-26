@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { BarList } from "@/components/charts/BarList";
+import { TransactionList } from "@/components/ledger/TransactionList";
 import { TransferSuggestions } from "@/components/ledger/TransferSuggestions";
 import { Icon } from "@/components/ui/Icon";
 import { Amount, Badge, EmptyState, NatureBadge, Notice, PageHeader, PageSkeleton } from "@/components/ui/primitives";
@@ -14,6 +15,7 @@ import styles from "./dashboard.module.css";
 /** Échéances et revenus affichés dans « À venir ». */
 const UPCOMING_DAYS = 30;
 const UPCOMING_MAX = 8;
+const RECENT_COUNT = 5;
 
 export default function DashboardPage() {
   return (
@@ -62,6 +64,10 @@ async function Dashboard() {
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, UPCOMING_MAX);
 
+  // Dernières opérations saisies (hors prévues), pour vérifier la saisie du jour.
+  const accountsById = new Map(data.accounts.map((a) => [a.id, a]));
+  const recent = data.transactions.filter((t) => t.status !== "planned").slice(0, RECENT_COUNT);
+
   // Reste à vivre : disponible − échéances à venir − réserve de sécurité.
   const hasScheduled = d.nextIncome !== null || d.reservedCents > 0;
   const remainingHint = !hasScheduled
@@ -76,9 +82,17 @@ async function Dashboard() {
         title="Tableau de bord"
         subtitle={formatDate(data.today, "long")}
         actions={
-          <Link href="/operations/nouvelle?retour=/" className="btn btn-primary">
-            <Icon name="plus" size={16} /> Opération
-          </Link>
+          <>
+            <Link href="/operations/nouvelle?type=expense&retour=/" className="btn btn-primary">
+              <Icon name="arrowOut" size={16} /> Dépense
+            </Link>
+            <Link href="/operations/nouvelle?type=income&retour=/" className="btn">
+              <Icon name="arrowIn" size={16} /> Revenu
+            </Link>
+            <Link href="/operations/nouvelle?type=transfer&retour=/" className="btn">
+              <Icon name="swap" size={16} /> Virement
+            </Link>
+          </>
         }
       />
 
@@ -185,13 +199,25 @@ async function Dashboard() {
         )}
       </div>
 
+      {recent.length > 0 && (
+        <section className="card">
+          <div className="card-header">
+            <h2>Dernières opérations</h2>
+            <Link href="/operations" className="link small">
+              Toutes les opérations
+            </Link>
+          </div>
+          <TransactionList transactions={recent} accountsById={accountsById} categoriesById={categoriesById} />
+        </section>
+      )}
+
       {d.transfers.length > 0 && (
         <section className="card">
           <div className="card-header">
             <h2>Virements conseillés</h2>
             <span className="faint small">30 prochains jours</span>
           </div>
-          <TransferSuggestions suggestions={d.transfers} accountsById={new Map(data.accounts.map((a) => [a.id, a]))} returnTo="/" />
+          <TransferSuggestions suggestions={d.transfers} accountsById={accountsById} returnTo="/" />
         </section>
       )}
     </div>

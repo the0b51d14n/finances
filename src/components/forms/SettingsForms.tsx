@@ -1,5 +1,7 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import { deleteAllDataAction, saveCategoryAction, saveSettingsAction } from "@/app/actions/settings";
 import { applyTheme, type ThemePreference } from "@/components/shell/ThemeSync";
 import { Field, FormMessage, useServerForm } from "@/components/ui/forms";
@@ -133,6 +135,59 @@ export function CategoryForm({ category }: { category?: { id: string; name: stri
           {state.message}
         </span>
       )}
+    </form>
+  );
+}
+
+/** Restauration d'une sauvegarde JSON, possible seulement sur un espace vide. */
+export function RestoreBackupForm({ empty }: { empty: boolean }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  async function restore(file: File) {
+    setResult(null);
+    const response = await fetch("/api/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: await file.text() });
+    const body = (await response.json().catch(() => ({}))) as { error?: string; counts?: { accounts: number; transactions: number } };
+    if (!response.ok) {
+      setResult({ ok: false, message: body.error ?? "La restauration a échoué." });
+      return;
+    }
+    setResult({ ok: true, message: `Sauvegarde restaurée : ${body.counts?.accounts ?? 0} compte(s), ${body.counts?.transactions ?? 0} opération(s).` });
+    router.refresh();
+  }
+
+  return (
+    <form
+      className="form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const file = (e.currentTarget.elements.namedItem("backup") as HTMLInputElement).files?.[0];
+        if (!file) return setResult({ ok: false, message: "Choisissez un fichier de sauvegarde (.json)." });
+        startTransition(() => restore(file));
+      }}
+    >
+      <Field
+        id="backup"
+        label="Restaurer une sauvegarde (JSON)"
+        hint={
+          empty
+            ? "Toutes les données de la sauvegarde seront recréées en une seule fois : tout ou rien."
+            : "Possible uniquement sur un espace vide : exportez vos données, puis « Supprimer toutes mes données » avant de restaurer."
+        }
+      >
+        <input id="backup" name="backup" type="file" accept=".json,application/json" className="input" disabled={!empty || pending} />
+      </Field>
+      {result && (
+        <p className={`small ${result.ok ? "pos" : "neg"}`} role={result.ok ? "status" : "alert"}>
+          {result.message}
+        </p>
+      )}
+      <div className="form-actions">
+        <button type="submit" className="btn" disabled={!empty || pending}>
+          {pending ? "Restauration…" : "Restaurer"}
+        </button>
+      </div>
     </form>
   );
 }

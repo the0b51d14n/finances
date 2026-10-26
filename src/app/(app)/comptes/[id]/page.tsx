@@ -19,13 +19,20 @@ export const metadata: Metadata = { title: "Compte" };
 export default function AccountPage(props: PageProps<"/comptes/[id]">) {
   return (
     <Suspense fallback={<PageSkeleton />}>
-      <AccountDetail params={props.params} />
+      <AccountDetail params={props.params} searchParams={props.searchParams} />
     </Suspense>
   );
 }
 
-async function AccountDetail({ params }: { params: PageProps<"/comptes/[id]">["params"] }) {
+async function AccountDetail({
+  params,
+  searchParams,
+}: {
+  params: PageProps<"/comptes/[id]">["params"];
+  searchParams: PageProps<"/comptes/[id]">["searchParams"];
+}) {
   const { id } = await params;
+  const editOpen = (await searchParams).modifier === "1";
   const data = await loadFinanceData();
   const account = data.accounts.find((a) => a.id === id);
   if (!account) notFound();
@@ -119,7 +126,7 @@ async function AccountDetail({ params }: { params: PageProps<"/comptes/[id]">["p
       </section>
 
       {!account.archivedAt && (
-        <section className="card">
+        <section className="card" id="corriger">
           <div className="card-header">
             <h2>{account.type === "investment" ? "Mettre à jour la valeur" : "Corriger le solde"}</h2>
           </div>
@@ -132,7 +139,7 @@ async function AccountDetail({ params }: { params: PageProps<"/comptes/[id]">["p
         </section>
       )}
 
-      <details className="disclosure card">
+      <details className="disclosure card" id="modifier" open={editOpen}>
         <summary>Modifier le compte</summary>
         <div style={{ marginTop: 12 }}>
           <AccountForm
