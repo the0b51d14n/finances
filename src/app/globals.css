@@ -216,7 +216,8 @@ p {
 .grid-stats {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  /* auto-fit : les tuiles présentes se partagent toute la largeur. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
 }
 
 /* ---------------------------------------------------------------- Cartes */
