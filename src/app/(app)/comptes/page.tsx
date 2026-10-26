@@ -80,20 +80,13 @@ async function Accounts({ searchParams }: { searchParams: Promise<Search> }) {
       ) : (
         <>
           <section className="grid-stats" aria-label="Synthèse des soldes">
-            <StatTile label="Disponible" cents={totals.availableCents} nature="actual" hint="Comptes courants et espèces : dépensable tout de suite" />
-            <StatTile label="Épargne" cents={totals.savingsCents} nature="actual" hint="Livrets et épargne : hors argent disponible" />
-            <StatTile
-              label="Total des soldes"
-              cents={totals.totalCents}
-              nature="actual"
-              hint="Disponible + épargne + réserves + placements, hors dettes et ressources affectées"
-            />
-            {totals.investmentCents !== 0 && <StatTile label="Placements" cents={totals.investmentCents} nature="actual" hint="Valeur à la dernière mise à jour, comprise dans le total" />}
-            {totals.voucherCents !== 0 && (
-              <StatTile label="Ressources affectées" cents={totals.voucherCents} nature="actual" hint="Tickets, cartes cadeaux… : ni disponibles, ni dans le total" />
-            )}
+            <StatTile label="Disponible" cents={totals.availableCents} nature="actual" />
+            <StatTile label="Épargne" cents={totals.savingsCents} nature="actual" />
+            <StatTile label="Total des soldes" cents={totals.totalCents} nature="actual" />
+            {totals.investmentCents !== 0 && <StatTile label="Placements" cents={totals.investmentCents} nature="actual" />}
+            {totals.voucherCents !== 0 && <StatTile label="Ressources affectées" cents={totals.voucherCents} nature="actual" />}
             {totals.debtCents !== 0 && (
-              <StatTile label="Dettes" cents={totals.debtCents} nature="actual" hint={`Patrimoine net (total − dettes) : ${formatCents(totals.netWorthCents)}`} />
+              <StatTile label="Dettes" cents={totals.debtCents} nature="actual" hint={`Patrimoine net : ${formatCents(totals.netWorthCents)}`} />
             )}
           </section>
 
