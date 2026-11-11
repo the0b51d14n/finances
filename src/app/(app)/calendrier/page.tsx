@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { OccurrenceResolver } from "@/components/forms/OccurrenceResolver";
 import { Icon } from "@/components/ui/Icon";
-import { Amount, Badge, PageHeader, PageSkeleton, StatTile } from "@/components/ui/primitives";
+import { Amount, PageHeader, PageSkeleton, StatTile } from "@/components/ui/primitives";
 import {
   addDays,
   addMonthsToKey,
@@ -19,7 +18,7 @@ import {
 } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
 import { FREQUENCY_LABELS, OCCURRENCE_STATUS_LABELS, listOccurrences, monthlyEquivalentCents, nextOccurrence, realizationIndex, type OccurrenceStatus } from "@/lib/domain/recurrence";
-import { centsToInput, formatCents } from "@/lib/money";
+import { formatCents } from "@/lib/money";
 import { KIND_LABELS } from "@/lib/view/labels";
 import styles from "./calendar.module.css";
 
@@ -76,12 +75,6 @@ async function Calendar({ searchParams }: { searchParams: Promise<Search> }) {
   const byDay = new Map<IsoDate, CalendarItem[]>();
   for (const item of items) byDay.set(item.date, [...(byDay.get(item.date) ?? []), item]);
 
-  // Échéances passées à confirmer (tous mois confondus).
-  const overdueOccurrences = data.rules.flatMap((rule) =>
-    listOccurrences(rule, rule.trackingStart, addDays(today, -1), today, index).filter((o) => o.status === "overdue"),
-  );
-  const overduePlanned = data.transactions.filter((tx) => tx.status === "planned" && tx.date < today);
-
   const pendingIncome = items.filter((i) => i.kind === "income" && (i.status === "pending" || i.status === "planned" || i.status === "overdue")).reduce((s, i) => s + i.amountCents, 0);
   const pendingExpense = items.filter((i) => i.kind === "expense" && (i.status === "pending" || i.status === "planned" || i.status === "overdue")).reduce((s, i) => s + i.amountCents, 0);
 
@@ -101,50 +94,13 @@ async function Calendar({ searchParams }: { searchParams: Promise<Search> }) {
     <div className="stack">
       <PageHeader
         title="Calendrier financier"
-        subtitle="Échéances récurrentes et opérations prévues. Une échéance n'est comptée qu'une fois confirmée."
+        subtitle="Échéances récurrentes et opérations à venir. Chacune compte automatiquement à sa date."
         actions={
           <Link href="/calendrier/regles/nouvelle" className="btn btn-primary">
             <Icon name="plus" size={16} /> Échéance récurrente
           </Link>
         }
       />
-
-      {(overdueOccurrences.length > 0 || overduePlanned.length > 0) && (
-        <section className="card stack">
-          <div className="card-header" style={{ marginBottom: 0 }}>
-            <h2>À confirmer</h2>
-            <Badge tone="estimate">{overdueOccurrences.length + overduePlanned.length} en attente</Badge>
-          </div>
-          <p className="faint small">Ces échéances sont passées mais pas encore enregistrées : confirmez-les avec le montant réel, ou ignorez-les.</p>
-          <ul className="list">
-            {overdueOccurrences.slice(0, 20).map((occ) => (
-              <li key={`${occ.rule.id}-${occ.date}`} style={{ flexDirection: "column", alignItems: "stretch" }}>
-                <div className="row-between">
-                  <span>
-                    <strong style={{ fontWeight: 500 }}>{occ.rule.label}</strong>{" "}
-                    <span className="faint small">
-                      · {KIND_LABELS[occ.rule.kind]} prévu(e) le {formatDate(occ.date)}
-                    </span>
-                  </span>
-                  <Amount cents={occ.rule.kind === "expense" ? -occ.rule.amountCents : occ.rule.amountCents} signed={occ.rule.kind !== "transfer"} />
-                </div>
-                <OccurrenceResolver ruleId={occ.rule.id} occurrenceDate={occ.date} amount={centsToInput(occ.rule.amountCents)} today={today} />
-              </li>
-            ))}
-            {overduePlanned.map((tx) => (
-              <li key={tx.id}>
-                <Link href={`/operations/${tx.id}`} className="list-link">
-                  <span className="list-main">
-                    <span>{tx.label}</span>
-                    <span className="faint tiny">Opération prévue le {formatDate(tx.date)} · à confirmer ou annuler</span>
-                  </span>
-                  <Icon name="chevron" />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
 
       <section className="grid-stats">
         <StatTile label="Revenus restant à venir ce mois" cents={pendingIncome} nature="forecast" />
@@ -186,7 +142,7 @@ async function Calendar({ searchParams }: { searchParams: Promise<Search> }) {
             </div>
           ))}
           <p className="faint tiny" style={{ marginTop: 8 }}>
-            Liseré vert : revenu · rouge : dépense · gris : transfert. Estompé : réalisé. Barré : ignoré. Fond jaune : à confirmer.
+            Liseré vert : revenu · rouge : dépense · gris : transfert. Estompé : réalisé. Barré : ignoré.
           </p>
         </div>
 

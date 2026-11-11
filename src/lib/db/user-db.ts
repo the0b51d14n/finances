@@ -81,6 +81,11 @@ export function userDb(executor: Executor, userId: string) {
       const res = await run([q]);
       return res.error ? res : { data: null, error: null };
     },
+    /** Plusieurs instructions sans résultat dans une même transaction (tout ou rien). */
+    async execAll(queries: Query[]): Promise<DbResult<null>> {
+      const res = await run(queries);
+      return res.error ? res : { data: null, error: null };
+    },
     /** Plusieurs SELECT dans une même transaction (un seul aller-retour). */
     async batch(queries: Query[]): Promise<DbResult<Row[][]>> {
       const res = await run(queries.map(asJsonRows));

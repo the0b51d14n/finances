@@ -63,7 +63,7 @@ async function Accounts({ searchParams }: { searchParams: Promise<Search> }) {
     <div className="stack">
       <PageHeader
         title="Comptes"
-        subtitle="Soldes calculés à partir du solde initial et des opérations confirmées."
+        subtitle="Soldes calculés à partir du solde initial et des opérations effectuées."
         actions={
           <Link href="/comptes/nouveau" className="btn btn-primary">
             <Icon name="plus" size={16} /> Nouveau compte

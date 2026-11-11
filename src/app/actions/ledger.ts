@@ -5,15 +5,14 @@ import { redirect } from "next/navigation";
 import { failure, safeReturnTo, success, type ActionState } from "@/lib/actions/state";
 import { addDays, todayParis } from "@/lib/dates";
 import { dbErrorMessage } from "@/lib/data/errors";
-import { ACCOUNT_COLUMNS, RULE_COLUMNS, toAccount, toRule } from "@/lib/data/mappers";
+import { ACCOUNT_COLUMNS, toAccount } from "@/lib/data/mappers";
 import { getSession } from "@/lib/data/session";
 import { deleteById, insertInto, raw, sql, updateWhere } from "@/lib/db/sql";
 import type { UserDb } from "@/lib/db/user-db";
 import { typeChangeAllowed } from "@/lib/domain/accounts";
 import { adjustmentFor, buildEntries, type EntryInput } from "@/lib/domain/ledger";
-import { nextOccurrence, occurrenceDates } from "@/lib/domain/recurrence";
+import { nextOccurrence } from "@/lib/domain/recurrence";
 import type { Account, Entry } from "@/lib/domain/types";
-import { parseAmountToCents } from "@/lib/money";
 import {
   accountSchema,
   balanceAdjustmentSchema,
@@ -51,9 +50,9 @@ export async function saveTransactionAction(_prev: ActionState, formData: FormDa
   if (!parsed.success) return failure(INVALID, fieldErrorsOf(parsed.error));
   const v = parsed.data;
 
-  if (v.status === "confirmed" && v.date > todayParis()) {
-    return failure(INVALID, { date: "Date future : choisissez le statut « Prévue » pour une opération à venir." });
-  }
+  // Aucune confirmation : le statut découle de la date (future = à venir,
+  // sinon effectuée). Seule une opération annulée (échéance ignorée) le reste.
+  const status = v.status === "cancelled" ? "cancelled" : v.date > todayParis() ? "planned" : "confirmed";
 
   const { db } = await getSession();
   const accounts = await accountsMap(db);
@@ -124,7 +123,7 @@ export async function saveTransactionAction(_prev: ActionState, formData: FormDa
       id: v.id,
       client_request_id: v.client_request_id,
       kind: v.kind,
-      status: v.status,
+      status,
       date: v.date,
       label: v.label,
       notes: v.notes,
@@ -142,7 +141,7 @@ export async function saveTransactionAction(_prev: ActionState, formData: FormDa
   }
 
   // L'opération réalise un achat planifié : il sort du calendrier d'achats.
-  if (v.purchase_plan_id && v.status === "confirmed") {
+  if (v.purchase_plan_id && status !== "cancelled") {
     await db.exec(updateWhere("purchase_plans", { status: "purchased" }, "id", v.purchase_plan_id));
   }
 
@@ -150,78 +149,23 @@ export async function saveTransactionAction(_prev: ActionState, formData: FormDa
   redirect(safeReturnTo(values.return_to, `/operations/${String(saved?.id)}`));
 }
 
-export async function setTransactionStatusAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const id = String(formData.get("id") ?? "");
-  const status = String(formData.get("status") ?? "");
-  const date = String(formData.get("date") ?? "") || null;
-  if (!["planned", "confirmed", "cancelled"].includes(status)) return failure("Statut invalide.");
-  if (status === "confirmed" && (date ?? "") > todayParis()) {
-    return failure("Une opération ne peut être confirmée qu'une fois sa date passée.");
-  }
-  const { db } = await getSession();
-  const { error } = await db.exec(sql`select public.set_transaction_status(${id}::uuid, ${status}, ${date}::date)`);
-  if (error) return failure(dbErrorMessage(error));
-  refreshAll();
-  return success(status === "confirmed" ? "Opération confirmée." : status === "cancelled" ? "Opération annulée." : "Opération repassée en prévue.");
-}
-
+/**
+ * Supprime une opération. Une échéance récurrente n'est pas effacée mais
+ * marquée « ignorée » (annulée) : sinon elle serait enregistrée de nouveau
+ * automatiquement au chargement suivant. La règle continue pour les suivantes.
+ */
 export async function deleteTransactionAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const id = String(formData.get("id") ?? "");
   const { db } = await getSession();
-  const { error } = await db.exec(sql`select public.delete_transaction(${id}::uuid)`);
+  const { data: existing } = await db.row<{ recurrence_id: string | null }>(sql`select recurrence_id from public.transactions where id = ${id}`);
+  const { error } = await db.exec(
+    existing?.recurrence_id
+      ? sql`select public.set_transaction_status(${id}::uuid, 'cancelled', null)`
+      : sql`select public.delete_transaction(${id}::uuid)`,
+  );
   if (error) return failure(dbErrorMessage(error));
   refreshAll();
   redirect(safeReturnTo(String(formData.get("return_to") ?? ""), "/operations"));
-}
-
-/**
- * Réalise (confirme) ou ignore une échéance récurrente. Le montant réel peut
- * différer du montant estimé, conservé dans expected_amount_cents.
- */
-export async function resolveOccurrenceAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const mode = String(formData.get("mode") ?? "confirm");
-  const ruleId = String(formData.get("rule_id") ?? "");
-  const occurrenceDate = String(formData.get("occurrence_date") ?? "");
-  const today = todayParis();
-
-  const { db } = await getSession();
-  const { data: ruleRow, error: ruleError } = await db.row(sql`select ${raw(RULE_COLUMNS)} from public.recurring_rules where id = ${ruleId}`);
-  if (ruleError || !ruleRow) return failure("Échéance introuvable.");
-  const rule = toRule(ruleRow);
-  if (!occurrenceDates(rule, occurrenceDate, occurrenceDate).includes(occurrenceDate)) {
-    return failure("Cette date ne correspond à aucune échéance de la règle.");
-  }
-
-  const date = mode === "skip" ? occurrenceDate : String(formData.get("date") ?? "") || occurrenceDate;
-  const rawAmount = String(formData.get("amount") ?? "");
-  const amountCents = mode === "skip" || rawAmount === "" ? rule.amountCents : parseAmountToCents(rawAmount);
-  if (!amountCents || amountCents <= 0) return failure("Montant invalide.");
-  const status = mode === "skip" ? "cancelled" : date > today ? "planned" : "confirmed";
-
-  const accounts = await accountsMap(db);
-  if (!accounts) return failure("Impossible de vérifier vos comptes. Réessayez.");
-  const input: EntryInput =
-    rule.kind === "transfer"
-      ? { kind: "transfer", amountCents, fromAccountId: rule.accountId, toAccountId: rule.toAccountId! }
-      : { kind: rule.kind, amountCents, accountId: rule.accountId };
-  const built = buildEntries(input, accounts);
-  if (!built.ok) return failure(built.error);
-
-  const { error } = await saveTransaction(db, {
-      kind: rule.kind,
-      status,
-      date,
-      label: rule.label,
-      amount_cents: amountCents,
-      expected_amount_cents: rule.amountCents,
-      category_id: rule.categoryId,
-      recurrence_id: rule.id,
-      occurrence_date: occurrenceDate,
-      entries: entriesPayload(built.entries),
-  });
-  if (error) return failure(dbErrorMessage(error));
-  refreshAll();
-  return success(mode === "skip" ? "Échéance ignorée." : status === "planned" ? "Échéance planifiée." : "Échéance confirmée.");
 }
 
 // -----------------------------------------------------------------------------

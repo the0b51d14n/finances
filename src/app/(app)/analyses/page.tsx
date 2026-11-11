@@ -30,7 +30,7 @@ async function Journal() {
 
   return (
     <div className="stack">
-      <PageHeader title="Analyses mensuelles" subtitle="Journal des mois, calculé à partir des seules opérations confirmées." />
+      <PageHeader title="Analyses mensuelles" subtitle="Journal des mois, calculé à partir des seules opérations effectuées." />
 
       <div className="grid-2">
         <section className="card">

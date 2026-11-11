@@ -61,7 +61,7 @@ async function Resources() {
       <section className="grid-stats">
         <StatTile label="Estimé (échéances reçues ce mois)" cents={expectedThisMonth} nature="estimate" />
         <StatTile label="Réellement reçu ce mois" cents={receivedThisMonth} nature="actual" hint={expectedThisMonth ? `écart ${formatCents(receivedThisMonth - expectedThisMonth, { signed: true })}` : undefined} />
-        <StatTile label={`Revenus confirmés ${today.slice(0, 4)}`} cents={[...incomeByCategory.values()].reduce((a, b) => a + b, 0)} nature="actual" />
+        <StatTile label={`Revenus effectués ${today.slice(0, 4)}`} cents={[...incomeByCategory.values()].reduce((a, b) => a + b, 0)} nature="actual" />
       </section>
 
       <section className="card">
@@ -175,10 +175,10 @@ async function Resources() {
 
       <section className="card">
         <div className="card-header">
-          <h2>Revenus confirmés par catégorie ({today.slice(0, 4)})</h2>
+          <h2>Revenus effectués par catégorie ({today.slice(0, 4)})</h2>
         </div>
         {incomeByCategory.size === 0 ? (
-          <p className="muted small">Aucun revenu confirmé cette année.</p>
+          <p className="muted small">Aucun revenu effectué cette année.</p>
         ) : (
           <ul className="list">
             {[...incomeByCategory.entries()]

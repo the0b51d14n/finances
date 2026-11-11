@@ -6,10 +6,11 @@
  *  - « planifiée » : une opération prévue lui est liée ;
  *  - « ignorée »   : une opération annulée lui est liée (échéance sautée) ;
  *  - « à venir »   : date future, rien de lié ;
- *  - « en retard » : date passée, rien de lié → à confirmer ou ignorer ;
+ *  - « non enregistrée » : date atteinte, rien de lié. Ne dure pas : elle est
+ *    enregistrée automatiquement au chargement (voir realization.ts) ;
  *  - « hors suivi » : antérieure au début de suivi de la règle (réputée
  *    incluse dans les soldes initiaux, jamais comptée).
- * Une échéance prévue n'est jamais comptée comme effectuée avant confirmation.
+ * Il n'y a aucune confirmation : une échéance compte dès que sa date est atteinte.
  */
 import type { Cents } from "@/lib/money";
 import { addDays, addMonths, diffDays, diffMonths, maxDate, minDate, parts, type IsoDate } from "@/lib/dates";
@@ -93,7 +94,7 @@ export const OCCURRENCE_STATUS_LABELS: Record<OccurrenceStatus, string> = {
   planned: "Planifiée",
   skipped: "Ignorée",
   pending: "À venir",
-  overdue: "À confirmer",
+  overdue: "Non enregistrée",
   untracked: "Hors suivi",
 };
 

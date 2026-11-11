@@ -151,7 +151,7 @@ export function RuleForm({
             id="tracking_start"
             label="Suivre les échéances à partir du"
             error={errors.tracking_start}
-            hint="Les échéances antérieures sont réputées incluses dans vos soldes initiaux et ne seront jamais « à confirmer »."
+            hint="Les échéances antérieures sont réputées incluses dans vos soldes initiaux : elles ne sont pas enregistrées."
           >
             <input id="tracking_start" name="tracking_start" type="date" className="input" defaultValue={initial.trackingStart} />
           </Field>

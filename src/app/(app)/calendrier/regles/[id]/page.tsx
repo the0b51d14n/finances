@@ -3,13 +3,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { deleteRuleAction, toggleRuleAction } from "@/app/actions/ledger";
-import { OccurrenceResolver } from "@/components/forms/OccurrenceResolver";
 import { RuleForm } from "@/components/forms/RuleForm";
 import { toAccountOptions, toCategoryOptions } from "@/components/forms/options";
 import { ActionButton } from "@/components/ui/forms";
 import { Icon } from "@/components/ui/Icon";
 import { Amount, Badge, PageHeader, PageSkeleton } from "@/components/ui/primitives";
-import { addDays, addMonths, formatDate, maxDate } from "@/lib/dates";
+import { addMonths, formatDate, maxDate } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
 import { FREQUENCY_LABELS, OCCURRENCE_STATUS_LABELS, listOccurrences, monthlyEquivalentCents, realizationIndex } from "@/lib/domain/recurrence";
 import { centsToInput, formatCents } from "@/lib/money";
@@ -123,9 +122,6 @@ async function Rule({ params }: { params: PageProps<"/calendrier/regles/[id]">["
                   )}
                 </span>
               </div>
-              {(occ.status === "overdue" || (occ.status === "pending" && occ.date <= addDays(data.today, 7))) && (
-                <OccurrenceResolver ruleId={rule.id} occurrenceDate={occ.date} amount={centsToInput(rule.amountCents)} today={data.today} />
-              )}
             </li>
           ))}
         </ul>

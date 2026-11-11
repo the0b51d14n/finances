@@ -187,7 +187,6 @@ async function Dashboard() {
                       </span>
                     </span>
                     <span className="row" style={{ gap: 6 }}>
-                      {e.overdue && <Badge tone="estimate">À confirmer</Badge>}
                       {isIncome && e.certainty !== "certain" && <Badge tone="estimate">{CERTAINTY_LABELS[e.certainty]}</Badge>}
                       <Amount cents={isIncome ? e.grossCents : -e.grossCents} signed colored={isIncome} />
                     </span>

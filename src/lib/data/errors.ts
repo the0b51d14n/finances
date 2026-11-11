@@ -7,7 +7,7 @@ type DbError = { code?: string; message?: string; details?: string | null } | nu
 const KNOWN: [RegExp, string][] = [
   [/ledger_unbalanced/, "Les écritures de l'opération sont incohérentes : vérifiez les montants et les comptes."],
   [/meal_voucher_transfer/, "Les tickets-restaurant et avantages affectés ne peuvent pas être transférés vers ou depuis un autre compte."],
-  [/confirmed_in_future/, "Une opération confirmée ne peut pas être datée dans le futur : enregistrez-la comme « prévue »."],
+  [/confirmed_in_future/, "Une opération effectuée ne peut pas être datée dans le futur."],
   [/account_archived/, "Ce compte est archivé : il ne peut plus recevoir de nouvelles opérations."],
   [/transaction_not_found|rule_not_found/, "Élément introuvable ou inaccessible."],
   [/not_authenticated/, "Votre session a expiré : reconnectez-vous."],

@@ -185,14 +185,6 @@ export function computeDashboard(input: DashboardInput): DashboardData {
       });
     }
   }
-  if (overdue.length > 0) {
-    alerts.push({
-      level: "warning",
-      title: `${overdue.length} échéance(s) à confirmer`,
-      detail: "Des opérations prévues ont une date passée : confirmez-les, modifiez-les ou ignorez-les.",
-      href: "/calendrier",
-    });
-  }
   if (settings.notifyBudgetAlerts) {
     for (const { budget, evaluation } of budgets) {
       const name = input.categoryName(budget.categoryId);

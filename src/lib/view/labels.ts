@@ -9,8 +9,8 @@ export const KIND_LABELS: Record<TransactionKind, string> = {
 };
 
 export const STATUS_LABELS: Record<TransactionStatus, string> = {
-  planned: "Prévue",
-  confirmed: "Confirmée",
+  planned: "À venir",
+  confirmed: "Effectuée",
   cancelled: "Annulée",
 };
 

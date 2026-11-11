@@ -357,14 +357,6 @@ async function Forecast({ searchParams }: { searchParams: Promise<Search> }) {
                 Non comptés (incertains) : {uncertain.map((e) => `${e.label} ${formatCents(e.grossCents)} le ${formatDate(e.date, "short")}`).join(" · ")}.
               </p>
             )}
-            {events.some((e) => e.overdue) && (
-              <p className="faint small">
-                Les échéances passées non confirmées sont reportées à aujourd&apos;hui.{" "}
-                <Link href="/calendrier" className="link">
-                  Les confirmer
-                </Link>
-              </p>
-            )}
           </>
         )}
       </section>

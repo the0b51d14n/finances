@@ -75,7 +75,7 @@ async function NewOperation({ searchParams }: { searchParams: Promise<Search> })
         title={plan ? `Achat : ${plan.name}` : source ? "Dupliquer une opération" : "Nouvelle opération"}
         subtitle={
           plan
-            ? "Ajustez le montant réel : l'achat sera retiré de votre liste une fois la dépense confirmée."
+            ? "Ajustez le montant réel : l'achat sera retiré de votre liste dès l'enregistrement de la dépense."
             : source
               ? `Copie de « ${source.label} » datée d'aujourd'hui : vérifiez la date et le montant.`
               : undefined

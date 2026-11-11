@@ -88,8 +88,8 @@ async function AccountDetail({
       <section className="grid-stats">
         <StatTile label="Solde actuel" cents={balance} nature="actual" emphasis tone="auto" />
         <StatTile label="Solde initial" cents={account.openingBalanceCents} hint={`au début du ${formatDate(account.openingBalanceDate)}`} />
-        <StatTile label={isVoucher ? "Crédits reçus" : "Entrées confirmées"} cents={credits} />
-        <StatTile label={isVoucher ? "Dépenses en tickets" : "Sorties confirmées"} cents={-debits} />
+        <StatTile label={isVoucher ? "Crédits reçus" : "Entrées effectuées"} cents={credits} />
+        <StatTile label={isVoucher ? "Dépenses en tickets" : "Sorties effectuées"} cents={-debits} />
       </section>
       {isVoucher && account.validUntil && (
         <p className="muted small">

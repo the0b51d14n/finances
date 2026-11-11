@@ -42,7 +42,7 @@ export function buildMonthInsights(args: {
     insights.push({ tone: "neutral", text: "Mois en cours : les chiffres sont provisoires et évolueront jusqu'à la fin du mois." });
   }
   if (current.transactionCount === 0) {
-    insights.push({ tone: "neutral", text: "Aucune opération confirmée ce mois-ci : aucun bilan ne peut être établi." });
+    insights.push({ tone: "neutral", text: "Aucune opération effectuée ce mois-ci : aucun bilan ne peut être établi." });
     return insights;
   }
 

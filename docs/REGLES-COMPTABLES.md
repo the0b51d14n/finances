@@ -32,17 +32,21 @@ et `delete_transaction`, atomiques et auditées.
 
 ## 3. Statuts
 
-- **Confirmée** : l'opération a eu lieu. Elle compte dans les soldes et les analyses.
-  Elle ne peut pas être datée dans le futur.
-- **Prévue** : elle n'a aucun effet sur les soldes ni sur les analyses ; elle
-  alimente uniquement les prévisions.
-- **Annulée** : conservée pour l'historique, sans aucun effet.
+Il n'existe **aucune étape de confirmation** : le statut découle de la date.
+
+- **Effectuée** (`confirmed`) : date aujourd'hui ou passée. Elle compte dans les
+  soldes et les analyses. Elle ne peut pas être datée dans le futur.
+- **À venir** (`planned`) : date future. Elle n'a aucun effet sur les soldes ni
+  sur les analyses ; elle alimente uniquement les prévisions. Dès que sa date est
+  atteinte, elle devient automatiquement effectuée, à sa date.
+- **Annulée / ignorée** (`cancelled`) : conservée pour l'historique, sans aucun
+  effet (échéance récurrente supprimée).
 
 ## 4. Comptes et soldes
 
 - Le **solde initial** est le solde au **début** du jour de référence, avant
   toute opération datée de ce jour.
-- **Solde** = solde initial + écritures **confirmées** datées du jour de
+- **Solde** = solde initial + écritures **effectuées** datées du jour de
   référence ou après. Les opérations antérieures restent visibles et comptent
   dans les analyses mensuelles, mais n'affectent pas le solde (elles sont
   réputées incluses dans le solde initial) : aucune double comptabilisation.
@@ -118,7 +122,7 @@ Prévisions.
   récurrentes non réalisées + opérations prévues) d'aujourd'hui jusqu'à la veille
   du prochain revenu **certain**, ou sur 30 jours s'il n'y en a pas.
 - **Reste jusqu'au prochain revenu** = disponible − réservé − réserve de sécurité.
-- **Revenus / dépenses du mois** = opérations confirmées du mois calendaire.
+- **Revenus / dépenses du mois** = opérations effectuées du mois calendaire.
 - Chaque tuile indique sa nature : *Constaté*, *Estimé* ou *Prévision*.
 
 ## 6. Transferts
@@ -142,20 +146,26 @@ depuis un portefeuille de tickets-restaurant sont interdits.
 
 - Les occurrences sont calculées, pas stockées. Les échéances mensuelles gardent
   le jour de la date de début, borné à la fin du mois (31 → 28/29/30).
-- **Réaliser** une échéance crée une opération liée `(règle, date prévue)`,
-  unique en base : impossible de l'enregistrer deux fois. Le montant réel peut
-  différer de l'estimation, conservée à part (`expected_amount_cents`).
-- **Ignorer** une échéance crée une opération annulée liée (trace conservée).
-- Une échéance passée non enregistrée est « à confirmer » ; elle n'est jamais
-  comptée comme effectuée. Les échéances antérieures à la date de **début de
-  suivi** de la règle sont « hors suivi » (réputées incluses dans les soldes initiaux).
+- **Enregistrement automatique** : dès que sa date est atteinte (le jour même),
+  une échéance suivie est enregistrée comme opération effectuée liée
+  `(règle, date prévue)`, au montant de la règle et à la date de l'échéance
+  (au chargement des données ; voir `src/lib/domain/realization.ts`). Le lien
+  est unique en base : impossible de l'enregistrer deux fois. Le montant réel se
+  corrige en modifiant l'opération ; l'estimation reste conservée à part
+  (`expected_amount_cents`).
+- **Supprimer** une échéance enregistrée la marque « ignorée » (opération
+  annulée liée, trace conservée) : elle n'est pas réenregistrée, les suivantes
+  restent prévues.
+- Une règle suspendue, ou dont un compte est archivé, n'enregistre rien. Les
+  échéances antérieures à la date de **début de suivi** de la règle sont « hors
+  suivi » (réputées incluses dans les soldes initiaux) et ne sont jamais enregistrées.
 - Modifier une règle ne réécrit jamais l'historique ; l'option « appliquer à
   partir du » arrête la règle la veille et crée une nouvelle règle.
 
 ## 9. Budgets
 
 - Périodes calendaires : semaine du **lundi au dimanche**, mois calendaire.
-- **Dépensé** = dépenses confirmées de la catégorie dans la période (montant
+- **Dépensé** = dépenses effectuées de la catégorie dans la période (montant
   total, tickets compris). Chaque opération n'appartient qu'à une catégorie et
   une période.
 - **Programmé** = opérations prévues + échéances non réalisées de la catégorie
@@ -178,8 +188,9 @@ sont toujours comptées (prudence).
 
 Le solde **disponible** est projeté jour par jour, dans l'ordre chronologique,
 à partir du disponible constaté aujourd'hui et des mouvements à venir (effet sur
-le disponible uniquement). Les échéances passées non confirmées sont reportées
-à aujourd'hui. Option « préserver les budgets » : pour chaque période, l'enveloppe
+le disponible uniquement). Les échéances échues étant enregistrées
+automatiquement, seules les échéances futures (et celles d'une règle dont un
+compte est archivé, reportées à aujourd'hui) figurent dans les mouvements à venir. Option « préserver les budgets » : pour chaque période, l'enveloppe
 restante (budget − dépensé − déjà programmé, jamais négative) est réservée au
 début de la période ; si une catégorie a un budget hebdomadaire et mensuel,
 seul l'hebdomadaire est utilisé.
@@ -212,8 +223,8 @@ Les achats sont **cumulés** : la même marge n'est jamais comptée deux fois, e
 nouvel achat ne peut pas compromettre un achat précédent. Un achat placé après
 sa date limite est signalé, avec la somme qui manquerait pour l'acheter à cette
 date. Un achat sans date possible dans les 12 mois est « hors de portée ».
-Les livrets ne sont jamais utilisés. Confirmer la dépense correspondante retire
-l'achat de la liste.
+Les livrets ne sont jamais utilisés. Enregistrer la dépense correspondante
+(même datée dans le futur) retire l'achat de la liste.
 
 ## 12 ter. Virements conseillés entre comptes courants
 
@@ -228,7 +239,7 @@ imputés au **compte de dépenses courantes** choisi dans les Paramètres.
 
 ## 12 quater. Saisie rapide, doublons et sauvegardes
 
-- **Saisie rapide** : les opérations confirmées répétées au moins deux fois sur
+- **Saisie rapide** : les opérations effectuées répétées au moins deux fois sur
   120 jours (même type, libellé, catégorie et compte, hors échéances
   récurrentes) sont proposées comme modèles, avec le dernier montant saisi.
 - **Doublons possibles** : opérations non annulées de même type, date, montant,
@@ -253,7 +264,7 @@ affectations supérieures au solde du compte associé.
 
 ## 14. Analyses mensuelles
 
-- Revenus, dépenses : opérations confirmées du mois ; transferts et ajustements exclus.
+- Revenus, dépenses : opérations effectuées du mois ; transferts et ajustements exclus.
 - Solde net = revenus − dépenses ; taux d'épargne = solde net / revenus
   (non calculable si revenus nuls).
 - **Différence** = montant actuel − montant de référence ; **variation %** =

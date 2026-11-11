@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { deleteTransactionAction, setTransactionStatusAction } from "@/app/actions/ledger";
+import { deleteTransactionAction } from "@/app/actions/ledger";
 import { TransactionForm } from "@/components/forms/TransactionForm";
 import { toAccountOptions, toCategoryOptions } from "@/components/forms/options";
 import { ActionButton } from "@/components/ui/forms";
@@ -45,11 +45,15 @@ async function Operation({ params }: { params: PageProps<"/operations/[id]">["pa
       <PageHeader title={tx.label} subtitle={`${KIND_LABELS[tx.kind]} · ${formatDate(tx.date, "long")}`} back={{ href: "/operations", label: "Opérations" }} />
 
       {tx.status === "planned" && (
-        <Notice tone="info" title="Opération prévue">
-          Elle n&apos;est pas comptée dans les soldes ni dans les analyses tant qu&apos;elle n&apos;est pas confirmée.
+        <Notice tone="info" title="Opération à venir">
+          Elle sera comptée automatiquement le {formatDate(tx.date)}.
         </Notice>
       )}
-      {tx.status === "cancelled" && <Notice tone="warning" title="Opération annulée">Elle est conservée pour l&apos;historique mais n&apos;a aucun effet.</Notice>}
+      {tx.status === "cancelled" && (
+        <Notice tone="warning" title={tx.recurrenceId ? "Échéance ignorée" : "Opération annulée"}>
+          Elle est conservée pour l&apos;historique mais n&apos;a aucun effet.
+        </Notice>
+      )}
 
       <section className="card stack">
         <div className="row-between">
@@ -75,7 +79,7 @@ async function Operation({ params }: { params: PageProps<"/operations/[id]">["pa
             <dd style={{ margin: 0 }}>{formatDateTime(tx.createdAt)}</dd>
           </div>
           <div>
-            <dt className="faint">Confirmée le</dt>
+            <dt className="faint">Effectuée le</dt>
             <dd style={{ margin: 0 }}>{tx.confirmedAt ? formatDateTime(tx.confirmedAt) : "—"}</dd>
           </div>
           {tx.expectedAmountCents !== null && tx.expectedAmountCents !== tx.amountCents && (
@@ -120,34 +124,25 @@ async function Operation({ params }: { params: PageProps<"/operations/[id]">["pa
         </div>
         {tx.notes && <p className="small" style={{ whiteSpace: "pre-wrap" }}>{tx.notes}</p>}
         <div className="row">
-          {tx.status === "planned" && (
-            <ActionButton action={setTransactionStatusAction} fields={{ id: tx.id, status: "confirmed", date: tx.date <= data.today ? tx.date : data.today }} className="btn btn-primary btn-sm">
-              <Icon name="check" size={14} /> Confirmer{tx.date > data.today ? " (aujourd'hui)" : ""}
-            </ActionButton>
-          )}
-          {tx.status !== "cancelled" && (
-            <ActionButton action={setTransactionStatusAction} fields={{ id: tx.id, status: "cancelled" }} confirm="Annuler cette opération ? Elle restera visible dans l'historique." className="btn btn-sm">
-              Annuler l&apos;opération
-            </ActionButton>
-          )}
-          {tx.status !== "planned" && (
-            <ActionButton action={setTransactionStatusAction} fields={{ id: tx.id, status: "planned" }} className="btn btn-sm">
-              Repasser en prévue
-            </ActionButton>
-          )}
           {tx.kind !== "adjustment" && (
             <Link href={`/operations/nouvelle?dupliquer=${tx.id}&retour=/operations`} className="btn btn-sm">
               <Icon name="plus" size={14} /> Dupliquer
             </Link>
           )}
-          <ActionButton
-            action={deleteTransactionAction}
-            fields={{ id: tx.id, return_to: "/operations" }}
-            confirm="Supprimer définitivement cette opération ? Une copie est conservée dans le journal d'audit."
-            className="btn btn-danger btn-sm"
-          >
-            <Icon name="trash" size={14} /> Supprimer
-          </ActionButton>
+          {!(tx.recurrenceId && tx.status === "cancelled") && (
+            <ActionButton
+              action={deleteTransactionAction}
+              fields={{ id: tx.id, return_to: "/operations" }}
+              confirm={
+                tx.recurrenceId
+                  ? "Supprimer cette échéance ? Elle ne sera pas réenregistrée ; les échéances suivantes restent prévues."
+                  : "Supprimer définitivement cette opération ? Une copie est conservée dans le journal d'audit."
+              }
+              className="btn btn-danger btn-sm"
+            >
+              <Icon name="trash" size={14} /> Supprimer
+            </ActionButton>
+          )}
         </div>
       </section>
 

@@ -13,7 +13,8 @@ import type {
 } from "@/lib/domain/types";
 import { todayParis } from "@/lib/dates";
 import { sql } from "@/lib/db/sql";
-import type { DbError } from "@/lib/db/user-db";
+import type { DbError, UserDb } from "@/lib/db/user-db";
+import { dueRealizations, type DueRealization } from "@/lib/domain/realization";
 import { toAccount, toAllocation, toBudget, toCategory, toGoal, toPurchasePlan, toRule, toSettings, toTransaction } from "./mappers";
 import { DATA_QUERIES } from "./queries";
 import { getSession } from "./session";
@@ -70,9 +71,25 @@ export const loadFinanceData = cache(async (): Promise<FinanceData> => {
     if (res.data[0].length === 0) throw new DataLoadError("paramètres");
   }
 
-  const [[settings], accounts, categories, transactions, rules, budgets, goals, allocations, purchasePlans] = res.data;
+  const today = todayParis();
+  let data = toFinanceData(res.data, today, email);
+
+  // Aucune confirmation : ce qui est échu (opérations prévues, échéances
+  // récurrentes) est enregistré comme effectué, puis les données sont relues.
+  const due = dueRealizations(data);
+  if (due.length > 0) {
+    await realize(db, due);
+    res = await db.batch(DATA_QUERIES);
+    if (res.error) throw loadError(res.error, "données");
+    data = toFinanceData(res.data, today, email);
+  }
+  return data;
+});
+
+function toFinanceData(rows: Record<string, unknown>[][], today: string, email: string | null): FinanceData {
+  const [[settings], accounts, categories, transactions, rules, budgets, goals, allocations, purchasePlans] = rows;
   return {
-    today: todayParis(),
+    today,
     email,
     settings: toSettings(settings),
     accounts: accounts.map(toAccount),
@@ -84,7 +101,28 @@ export const loadFinanceData = cache(async (): Promise<FinanceData> => {
     allocations: allocations.map(toAllocation),
     purchasePlans: purchasePlans.map(toPurchasePlan),
   };
-});
+}
+
+const realizationQuery = (d: DueRealization) =>
+  d.type === "confirm"
+    ? sql`select public.set_transaction_status(${d.transactionId}::uuid, 'confirmed', null)`
+    : sql`select public.save_transaction(${d.payload}::jsonb)`;
+
+/**
+ * Enregistre les éléments échus en une transaction. En cas d'échec (par
+ * exemple une échéance déjà enregistrée par une requête simultanée), chaque
+ * élément est retenté seul : un élément en erreur ne bloque pas les autres.
+ */
+async function realize(db: UserDb, due: DueRealization[]): Promise<void> {
+  const all = await db.execAll(due.map(realizationQuery));
+  if (!all.error) return;
+  let failed = 0;
+  for (const d of due) {
+    const one = await db.exec(realizationQuery(d));
+    if (one.error) failed++;
+  }
+  if (failed > 0) console.error(`[données] réalisation automatique : ${failed} élément(s) non enregistré(s)`);
+}
 
 export type AuditEntry = { id: number; action: "update" | "status" | "delete"; changedAt: string; oldData: Record<string, unknown> };
 

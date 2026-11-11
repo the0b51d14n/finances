@@ -53,7 +53,9 @@ export function TransactionForm({
 }) {
   const { state, pending, onSubmit, errors } = useServerForm(saveTransactionAction, { schema: transactionSchema, withRequestId: !initial.id });
   const [kind, setKind] = useState<TransactionKind>(initial.kind);
-  const [status, setStatus] = useState<TransactionStatus>(initial.status);
+  const [date, setDate] = useState(initial.date);
+  // Aucune confirmation : une date future est « à venir », sinon l'opération est effectuée.
+  const status: TransactionStatus = initial.status === "cancelled" ? "cancelled" : date > today ? "planned" : "confirmed";
   const [accountId, setAccountId] = useState(initial.accountId);
   const [useVouchers, setUseVouchers] = useState(Number(initial.voucherAmount.replace(",", ".")) > 0);
 
@@ -108,27 +110,19 @@ export function TransactionForm({
       </div>
 
       <div className="form-grid">
-        <Field id="date" label="Date" error={err("date")}>
+        <Field id="date" label="Date" error={err("date")} hint={status === "planned" ? "Comptée automatiquement à cette date." : undefined}>
           <input
             id="date"
             name="date"
             type="date"
             className="input"
-            defaultValue={initial.date}
+            value={date}
             aria-invalid={!!err("date")}
-            onChange={(e) => {
-              if (e.target.value > today && status === "confirmed") setStatus("planned");
-            }}
+            onChange={(e) => setDate(e.target.value)}
             required
           />
         </Field>
-        <Field id="status" label="Statut" hint={status === "planned" ? "Non comptée dans les soldes tant qu'elle n'est pas confirmée." : undefined}>
-          <select id="status" name="status" className="select" value={status} onChange={(e) => setStatus(e.target.value as TransactionStatus)}>
-            <option value="confirmed">Confirmée (effectuée)</option>
-            <option value="planned">Prévue</option>
-            {editing && <option value="cancelled">Annulée</option>}
-          </select>
-        </Field>
+        <input type="hidden" name="status" value={status} />
       </div>
 
       <div className="form-grid">

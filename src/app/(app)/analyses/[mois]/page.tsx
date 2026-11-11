@@ -235,7 +235,7 @@ async function Month({ params, searchParams }: { params: PageProps<"/analyses/[m
             <span className="num small">{formatCents(current.expenseCents)}</span>
           </div>
           {current.expenseCents === 0 ? (
-            <p className="muted small">Aucune dépense confirmée.</p>
+            <p className="muted small">Aucune dépense effectuée.</p>
           ) : (
             <BarList
               ariaLabel="Répartition des dépenses"

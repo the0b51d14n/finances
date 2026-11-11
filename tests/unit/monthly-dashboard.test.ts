@@ -181,7 +181,7 @@ describe("bilan automatique", () => {
       monthTransactions: [],
       historyTransactions: [],
     });
-    expect(insights.map((i) => i.text)).toEqual(["Aucune opération confirmée ce mois-ci : aucun bilan ne peut être établi."]);
+    expect(insights.map((i) => i.text)).toEqual(["Aucune opération effectuée ce mois-ci : aucun bilan ne peut être établi."]);
   });
 });
 

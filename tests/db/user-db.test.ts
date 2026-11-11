@@ -6,7 +6,8 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { beforeAll, describe, expect, it } from "vitest";
 import { dbErrorMessage } from "@/lib/data/errors";
-import { toAccount, toSettings, toTransaction } from "@/lib/data/mappers";
+import { toAccount, toRule, toSettings, toTransaction } from "@/lib/data/mappers";
+import { dueRealizations, type DueRealization } from "@/lib/domain/realization";
 import { DATA_QUERIES } from "@/lib/data/queries";
 import { deleteById, insertInto, sql, updateWhere } from "@/lib/db/sql";
 import { userDb, type Executor, type UserDb } from "@/lib/db/user-db";
@@ -121,6 +122,54 @@ describe("lecture complète de l'application (loadFinanceData)", () => {
     const other = await bob.batch(DATA_QUERIES);
     expect(other.data![1]).toEqual([]);
     expect(other.data![3]).toEqual([]);
+  });
+
+  it("enregistre automatiquement ce qui est échu, une seule fois (aucune confirmation)", async () => {
+    const today = "2026-11-11";
+    const category = await alice.row<{ id: string }>(sql`select id from public.categories where kind = 'expense' limit 1`);
+    const loyer = await alice.returning<{ id: string }>(
+      insertInto(
+        "recurring_rules",
+        { kind: "expense", label: "Loyer", amount_cents: 75_000, account_id: aliceAccount, category_id: category.data!.id, frequency: "monthly", start_date: "2026-09-05", tracking_start: "2026-10-01" },
+        "id",
+      ),
+    );
+    const planned = await alice.row<{ id: string }>(sql`select public.save_transaction(${{
+      kind: "expense",
+      status: "planned",
+      date: "2026-11-10",
+      label: "Prévue hier",
+      amount_cents: 500,
+      category_id: category.data!.id,
+      entries: [{ account_id: aliceAccount, amount_cents: -500 }],
+    }}::jsonb) as id`);
+    expect(planned.error).toBeNull();
+
+    const load = async () => {
+      const r = await alice.batch(DATA_QUERIES);
+      return { accounts: r.data![1].map(toAccount), transactions: r.data![3].map(toTransaction), rules: r.data![4].map(toRule) };
+    };
+    const query = (d: DueRealization) =>
+      d.type === "confirm"
+        ? sql`select public.set_transaction_status(${d.transactionId}::uuid, 'confirmed', null)`
+        : sql`select public.save_transaction(${d.payload}::jsonb)`;
+
+    const due = dueRealizations({ today, ...(await load()) });
+    expect(due).toHaveLength(3); // 05/10, 05/11 et l'opération prévue d'hier
+    expect((await alice.execAll(due.map(query))).error).toBeNull();
+
+    const after = await load();
+    const occurrences = after.transactions.filter((t) => t.recurrenceId === loyer.data![0].id);
+    expect(occurrences.map((t) => [t.date, t.status, t.amountCents])).toEqual([
+      ["2026-11-05", "confirmed", 75_000],
+      ["2026-10-05", "confirmed", 75_000],
+    ]);
+    expect(after.transactions.find((t) => t.id === planned.data!.id)?.status).toBe("confirmed");
+
+    // Deuxième chargement : rien à refaire ; une requête simultanée serait refusée par la base.
+    expect(dueRealizations({ today, ...after })).toEqual([]);
+    const duplicate = await alice.exec(query(due.find((d) => d.type === "occurrence")!));
+    expect(dbErrorMessage(duplicate.error)).toBe("Cette échéance a déjà été enregistrée.");
   });
 
   it("traduit les erreurs des fonctions SQL en messages", async () => {
