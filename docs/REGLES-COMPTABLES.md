@@ -226,6 +226,30 @@ date. Un achat sans date possible dans les 12 mois est « hors de portée ».
 Les livrets ne sont jamais utilisés. Enregistrer la dépense correspondante
 (même datée dans le futur) retire l'achat de la liste.
 
+## 12 bis b. Chemin de l'argent d'une dépense ponctuelle
+
+Option de la saisie d'une **nouvelle dépense ponctuelle** (pas les échéances,
+déjà prévues par les récurrences). Organisation visée : le courant **principal**
+paie les dépenses courantes, le courant **secondaire** reçoit les salaires et
+porte les prélèvements, l'**épargne** complète.
+
+- Le compte qui paie est projeté (scénario garanti) jusqu'à 31 jours après la
+  dépense, dépense et échéances comprises. S'il suffit : aucun virement.
+- Sinon le manque est couvert d'abord par le **secondaire** (compte courant qui
+  reçoit une échéance de revenu active ; à défaut celui de la même banque qu'un
+  livret, sinon l'autre compte courant), sans entamer ce qu'il doit garder pour
+  ses prélèvements sur la période : secondaire → principal.
+- Le reste vient de l'**épargne** (livrets, puis épargne dédiée), sans la rendre
+  négative, en passant par le secondaire : épargne → secondaire → principal.
+  Sans autre compte courant, le virement est direct.
+- Montants arrondis aux 10 € supérieurs quand les sources le permettent ; la
+  part non couverte est signalée. Dates : virement final la veille de la
+  dépense, étape précédente l'avant-veille, jamais avant aujourd'hui.
+- Le chemin proposé est modifiable (ajout, retrait, comptes, montants, dates).
+  Les virements et la dépense sont enregistrés **dans une seule transaction**
+  (tout ou rien) ; chaque virement compte à sa date, comme toute opération.
+  Une double soumission ne recrée rien (identifiants de requête dérivés).
+
 ## 12 ter. Virements conseillés entre comptes courants
 
 Chaque compte courant est projeté séparément sur la période à venir (scénario

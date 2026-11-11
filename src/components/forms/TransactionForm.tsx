@@ -7,6 +7,7 @@ import { isTransferable } from "@/lib/domain/accounts";
 import { FREQUENCY_LABELS } from "@/lib/domain/recurrence";
 import type { TransactionKind, TransactionStatus } from "@/lib/domain/types";
 import { transactionSchema } from "@/lib/validation/schemas";
+import { MoneyPathEditor } from "./MoneyPathEditor";
 import type { AccountOption, CategoryOption } from "./options";
 
 export type TransactionFormValues = {
@@ -54,6 +55,7 @@ export function TransactionForm({
   const { state, pending, onSubmit, errors } = useServerForm(saveTransactionAction, { schema: transactionSchema, withRequestId: !initial.id });
   const [kind, setKind] = useState<TransactionKind>(initial.kind);
   const [date, setDate] = useState(initial.date);
+  const [amount, setAmount] = useState(initial.amount);
   // Aucune confirmation : une date future est « à venir », sinon l'opération est effectuée.
   const status: TransactionStatus = initial.status === "cancelled" ? "cancelled" : date > today ? "planned" : "confirmed";
   const [accountId, setAccountId] = useState(initial.accountId);
@@ -98,7 +100,8 @@ export function TransactionForm({
             inputMode="decimal"
             autoComplete="off"
             placeholder="0,00"
-            defaultValue={initial.amount}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
             aria-invalid={!!err("amount")}
             autoFocus={!editing}
             required
@@ -207,6 +210,17 @@ export function TransactionForm({
             </div>
           )}
         </div>
+      )}
+
+      {kind === "expense" && !editing && !initial.recurrenceId && (
+        <MoneyPathEditor
+          accounts={accounts.filter((a) => !a.archived && isTransferable(a.type))}
+          payerAccountId={accountId}
+          amount={amount}
+          date={date}
+          today={today}
+          error={err("path")}
+        />
       )}
 
       {!editing && kind !== "adjustment" && !initial.recurrenceId && (

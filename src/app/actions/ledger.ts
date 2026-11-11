@@ -1,18 +1,23 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { failure, safeReturnTo, success, type ActionState } from "@/lib/actions/state";
-import { addDays, todayParis } from "@/lib/dates";
+import { addDays, isValidIsoDate, todayParis } from "@/lib/dates";
 import { dbErrorMessage } from "@/lib/data/errors";
+import { loadFinanceData } from "@/lib/data/load";
 import { ACCOUNT_COLUMNS, toAccount } from "@/lib/data/mappers";
 import { getSession } from "@/lib/data/session";
 import { deleteById, insertInto, raw, sql, updateWhere } from "@/lib/db/sql";
 import type { UserDb } from "@/lib/db/user-db";
-import { typeChangeAllowed } from "@/lib/domain/accounts";
+import { balancesAt, typeChangeAllowed } from "@/lib/domain/accounts";
+import { forecastEventsFor } from "@/lib/domain/dashboard";
 import { adjustmentFor, buildEntries, type EntryInput } from "@/lib/domain/ledger";
+import { proposeMoneyPath } from "@/lib/domain/money-path";
 import { nextOccurrence } from "@/lib/domain/recurrence";
 import type { Account, Entry } from "@/lib/domain/types";
+import { centsToInput, parseAmountToCents } from "@/lib/money";
 import {
   accountSchema,
   balanceAdjustmentSchema,
@@ -119,22 +124,55 @@ export async function saveTransactionAction(_prev: ActionState, formData: FormDa
     occurrenceDate = v.date;
   }
 
-  const { data: saved, error } = await saveTransaction(db, {
-      id: v.id,
-      client_request_id: v.client_request_id,
-      kind: v.kind,
-      status,
-      date: v.date,
-      label: v.label,
-      notes: v.notes,
-      amount_cents: v.amount,
-      expected_amount_cents: v.expected_amount,
-      category_id: categoryId,
-      recurrence_id: recurrenceId,
-      occurrence_date: occurrenceDate,
-      is_exceptional: v.kind === "expense" && v.is_exceptional,
-      entries: entriesPayload(built.entries),
-  });
+  // Chemin de l'argent : virements préalables, enregistrés avec la dépense.
+  const today = todayParis();
+  const pathPayloads: Record<string, unknown>[] = [];
+  for (const [i, step] of v.path.entries()) {
+    const transfer = buildEntries(
+      { kind: "transfer", amountCents: step.amount_cents, fromAccountId: step.from_account_id, toAccountId: step.to_account_id },
+      accounts,
+    );
+    if (!transfer.ok) return failure(INVALID, { path: `Virement ${i + 1} du chemin : ${transfer.error}` });
+    pathPayloads.push({
+      client_request_id: stepRequestId(v.client_request_id, i),
+      kind: "transfer",
+      status: step.date > today ? "planned" : "confirmed",
+      date: step.date,
+      label: `Virement pour « ${v.label} »`,
+      amount_cents: step.amount_cents,
+      entries: entriesPayload(transfer.entries),
+    });
+  }
+
+  const payload = {
+    id: v.id,
+    client_request_id: v.client_request_id,
+    kind: v.kind,
+    status,
+    date: v.date,
+    label: v.label,
+    notes: v.notes,
+    amount_cents: v.amount,
+    expected_amount_cents: v.expected_amount,
+    category_id: categoryId,
+    recurrence_id: recurrenceId,
+    occurrence_date: occurrenceDate,
+    is_exceptional: v.kind === "expense" && v.is_exceptional,
+    entries: entriesPayload(built.entries),
+  };
+
+  // Virements et dépense dans une seule transaction : tout est enregistré, ou rien.
+  let savedId: string | undefined;
+  let error;
+  if (pathPayloads.length > 0) {
+    const res = await db.batch([...pathPayloads, payload].map((p) => sql`select public.save_transaction(${p}::jsonb) as id`));
+    error = res.error;
+    savedId = res.data?.at(-1)?.[0]?.id as string | undefined;
+  } else {
+    const res = await saveTransaction(db, payload);
+    error = res.error;
+    savedId = res.data?.id;
+  }
   if (error) {
     if (createdRuleId) await db.exec(deleteById("recurring_rules", createdRuleId));
     return failure(dbErrorMessage(error));
@@ -146,7 +184,57 @@ export async function saveTransactionAction(_prev: ActionState, formData: FormDa
   }
 
   refreshAll();
-  redirect(safeReturnTo(values.return_to, `/operations/${String(saved?.id)}`));
+  redirect(safeReturnTo(values.return_to, `/operations/${String(savedId)}`));
+}
+
+/**
+ * Identifiant de requête de la n-ième étape d'un chemin, dérivé de celui de la
+ * dépense : une double soumission ne recrée aucun virement (même UUID).
+ */
+function stepRequestId(requestId: string | null, index: number): string | null {
+  if (!requestId) return null;
+  const h = createHash("sha256").update(`${requestId}:chemin:${index}`).digest("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${((parseInt(h[16], 16) & 0x3) | 0x8).toString(16)}${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+
+export type MoneyPathResult =
+  | {
+      ok: true;
+      steps: { from_account_id: string; to_account_id: string; amount: string; date: string }[];
+      shortfallCents: number;
+      uncoveredCents: number;
+    }
+  | { ok: false; error: string };
+
+/**
+ * Propose le chemin de l'argent pour une dépense ponctuelle (voir
+ * src/lib/domain/money-path.ts). Ne modifie rien : le formulaire affiche la
+ * proposition, modifiable, et l'enregistre avec la dépense.
+ */
+export async function proposeMoneyPathAction(accountId: string, amount: string, date: string): Promise<MoneyPathResult> {
+  const amountCents = parseAmountToCents(amount);
+  if (!amountCents || amountCents <= 0) return { ok: false, error: "Saisissez d'abord le montant de la dépense." };
+  if (!accountId) return { ok: false, error: "Choisissez d'abord le compte qui paie." };
+  if (!isValidIsoDate(date)) return { ok: false, error: "Saisissez d'abord la date de la dépense." };
+
+  const data = await loadFinanceData();
+  const proposal = proposeMoneyPath({
+    today: data.today,
+    accounts: data.accounts,
+    balances: balancesAt(data.accounts, data.transactions, data.today),
+    events: forecastEventsFor(data),
+    rules: data.rules,
+    withBudgets: data.settings.preserveBudgetsInForecast,
+    payerAccountId: accountId,
+    amountCents,
+    date,
+  });
+  return {
+    ok: true,
+    steps: proposal.steps.map((s) => ({ from_account_id: s.fromAccountId, to_account_id: s.toAccountId, amount: centsToInput(s.amountCents), date: s.date })),
+    shortfallCents: proposal.shortfallCents,
+    uncoveredCents: proposal.uncoveredCents,
+  };
 }
 
 /**

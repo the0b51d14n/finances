@@ -107,6 +107,28 @@ const intInRange = (min: number, max: number, label: string) =>
 // Opérations
 // -----------------------------------------------------------------------------
 
+const pathStep = z.object({
+  from_account_id: uuid("Chemin : choisissez le compte de départ de chaque virement."),
+  to_account_id: uuid("Chemin : choisissez le compte d'arrivée de chaque virement."),
+  amount_cents: z.number().int().positive("Chemin : chaque virement doit avoir un montant positif.").max(100_000_000_000),
+  date: isoDate,
+});
+
+/** Liste de virements transmise en JSON par le formulaire ; vide si absente. */
+const pathField = z
+  .string()
+  .optional()
+  .transform((value, ctx) => {
+    if (!value) return [];
+    try {
+      return JSON.parse(value) as unknown;
+    } catch {
+      ctx.addIssue({ code: "custom", message: "Chemin de l'argent illisible." });
+      return z.NEVER;
+    }
+  })
+  .pipe(z.array(pathStep).max(10, "Chemin : 10 virements maximum."));
+
 export const transactionSchema = z
   .object({
     id: optionalUuid,
@@ -130,6 +152,8 @@ export const transactionSchema = z
     repeat: z.enum(["none", ...FREQUENCIES]).default("none"),
     /** Achat planifié réalisé par cette opération (marqué « acheté » après enregistrement). */
     purchase_plan_id: optionalUuid,
+    /** Chemin de l'argent : virements préalables à une dépense ponctuelle (JSON). */
+    path: pathField,
   })
   .superRefine((v, ctx) => {
     const issue = (path: string, message: string) => ctx.addIssue({ code: "custom", path: [path], message });
@@ -149,6 +173,15 @@ export const transactionSchema = z
       if (v.recurrence_id) issue("repeat", "Cette opération est déjà liée à une récurrence.");
     }
     if (!!v.recurrence_id !== !!v.occurrence_date) issue("occurrence_date", "Échéance de récurrence incomplète.");
+    if (v.path.length > 0) {
+      if (v.kind !== "expense" || v.id || v.repeat !== "none" || v.recurrence_id) {
+        issue("path", "Le chemin de l'argent ne concerne qu'une nouvelle dépense ponctuelle.");
+      }
+      for (const step of v.path) {
+        if (step.from_account_id === step.to_account_id) issue("path", "Chaque virement doit relier deux comptes différents.");
+        if (step.date > v.date) issue("path", "Un virement du chemin ne peut pas être daté après la dépense.");
+      }
+    }
   });
 
 export type TransactionInput = z.output<typeof transactionSchema>;

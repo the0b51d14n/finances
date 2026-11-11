@@ -172,6 +172,62 @@ describe("lecture complète de l'application (loadFinanceData)", () => {
     expect(dbErrorMessage(duplicate.error)).toBe("Cette échéance a déjà été enregistrée.");
   });
 
+  it("chemin de l'argent : virements et dépense ensemble, tout ou rien, sans doublon", async () => {
+    const newAccount = async (name: string, type: string, cents: number) =>
+      String(
+        (await alice.returning(insertInto("accounts", { name, type, opening_balance_cents: cents, opening_balance_date: "2026-01-01" }, "id"))).data![0].id,
+      );
+    const livret = await newAccount("Livret A", "savings", 500_000);
+    const secondaire = await newAccount("Courant secondaire", "checking", 0);
+    const principal = await newAccount("Courant principal", "checking", 0);
+    const category = await alice.row<{ id: string }>(sql`select id from public.categories where kind = 'expense' limit 1`);
+    const save = (p: Record<string, unknown>) => sql`select public.save_transaction(${p}::jsonb) as id`;
+    const transfer = (rid: string, from: string, to: string, date: string) => ({
+      client_request_id: rid,
+      kind: "transfer",
+      status: "confirmed",
+      date,
+      label: "Virement pour « Canapé »",
+      amount_cents: 65_000,
+      entries: [
+        { account_id: from, amount_cents: -65_000 },
+        { account_id: to, amount_cents: 65_000 },
+      ],
+    });
+    const expense = (categoryId: string | null) => ({
+      client_request_id: "00000000-0000-4000-8000-0000000000e3",
+      kind: "expense",
+      status: "confirmed",
+      date: "2026-02-05",
+      label: "Canapé",
+      amount_cents: 65_000,
+      category_id: categoryId,
+      entries: [{ account_id: principal, amount_cents: -65_000 }],
+    });
+    const path = (categoryId: string | null) => [
+      save(transfer("00000000-0000-4000-8000-0000000000e1", livret, secondaire, "2026-02-03")),
+      save(transfer("00000000-0000-4000-8000-0000000000e2", secondaire, principal, "2026-02-04")),
+      save(expense(categoryId)),
+    ];
+    const balance = async (id: string) =>
+      Number((await alice.row<{ b: number }>(sql`select balance_cents as b from public.account_balances where account_id = ${id}`)).data!.b);
+    const count = async () => Number((await alice.row<{ n: number }>(sql`select count(*) as n from public.transactions`)).data!.n);
+
+    // Dépense invalide (sans catégorie) : la transaction est annulée, aucun virement ne reste.
+    const before = await count();
+    expect((await alice.batch(path(null))).error).not.toBeNull();
+    expect(await count()).toBe(before);
+
+    // Chemin valide : livret → secondaire → principal → dépense.
+    expect((await alice.batch(path(category.data!.id))).error).toBeNull();
+    expect(await count()).toBe(before + 3);
+    expect([await balance(livret), await balance(secondaire), await balance(principal)]).toEqual([435_000, 0, 0]);
+
+    // Double soumission (mêmes identifiants de requête) : rien n'est recréé.
+    expect((await alice.batch(path(category.data!.id))).error).toBeNull();
+    expect(await count()).toBe(before + 3);
+  });
+
   it("traduit les erreurs des fonctions SQL en messages", async () => {
     const res = await alice.exec(sql`select public.delete_transaction(${"00000000-0000-0000-0000-000000000000"}::uuid)`);
     expect(dbErrorMessage(res.error)).toBe("Élément introuvable ou inaccessible.");
