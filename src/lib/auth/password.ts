@@ -1,7 +1,7 @@
 /**
  * Hachage des mots de passe avec scrypt (module crypto de Node, aucune
  * dépendance). Format stocké : scrypt$N$r$p$<sel base64>$<empreinte base64>.
- * Utilisé par l'action de connexion et par scripts/create-user.ts : ce module
+ * Utilisé par l'action de connexion et par scripts/create-user.mts : ce module
  * n'importe donc rien d'autre que node:crypto.
  */
 import { randomBytes, scrypt, timingSafeEqual, type ScryptOptions } from "node:crypto";

@@ -10,8 +10,8 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:migrate": "node scripts/db-migrate.ts",
-    "user:create": "node scripts/create-user.ts"
+    "db:migrate": "node scripts/db-migrate.mts",
+    "user:create": "node scripts/create-user.mts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
