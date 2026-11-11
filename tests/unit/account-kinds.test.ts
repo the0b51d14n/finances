@@ -16,7 +16,7 @@ describe("natures de comptes", () => {
   });
 
   it("correspond exactement à la contrainte SQL accounts_subtype_check", () => {
-    const sql = readFileSync(join(process.cwd(), "supabase", "migrations", "20261026000002_account_kinds.sql"), "utf8");
+    const sql = readFileSync(join(process.cwd(), "db", "migrations", "20261026000002_account_kinds.sql"), "utf8");
     const block = sql.slice(sql.indexOf("add constraint accounts_subtype_check"), sql.indexOf("#nature inconnue"));
     const pairs = Object.fromEntries([...block.matchAll(/when '([a-z_]+)' then '([a-z_]+)'/g)].map((m) => [m[1], m[2]]));
     expect(pairs).toEqual(Object.fromEntries(ACCOUNT_SUBTYPE_KEYS.map((k) => [k, ACCOUNT_SUBTYPES[k].type])));

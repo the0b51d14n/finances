@@ -1,5 +1,5 @@
 /**
- * Conversion des lignes Supabase (snake_case) en types métier (camelCase).
+ * Conversion des lignes SQL (snake_case) en types métier (camelCase).
  * Les colonnes sélectionnées sont centralisées ici pour rester cohérentes.
  */
 import type {
@@ -17,8 +17,9 @@ import type {
 export const ACCOUNT_COLUMNS =
   "id, name, type, subtype, currency, opening_balance_cents, opening_balance_date, valid_until, institution, notes, archived_at, created_at";
 export const CATEGORY_COLUMNS = "id, kind, name, system_key, color, sort_order, archived_at";
+/** Colonnes de public.transactions (alias t) ; les écritures sont jointes à part (voir load.ts). */
 export const TRANSACTION_COLUMNS =
-  "id, kind, status, date, label, notes, amount_cents, expected_amount_cents, category_id, recurrence_id, occurrence_date, is_exceptional, created_at, updated_at, confirmed_at, entries(account_id, amount_cents)";
+  "t.id, t.kind, t.status, t.date, t.label, t.notes, t.amount_cents, t.expected_amount_cents, t.category_id, t.recurrence_id, t.occurrence_date, t.is_exceptional, t.created_at, t.updated_at, t.confirmed_at";
 export const RULE_COLUMNS =
   "id, kind, label, amount_cents, account_id, to_account_id, category_id, frequency, start_date, end_date, tracking_start, certainty, is_active, notes";
 export const BUDGET_COLUMNS = "id, category_id, period, amount_cents, alert_pct, is_active";

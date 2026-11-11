@@ -1,40 +1,25 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createServerClient } from "@supabase/ssr";
-import { getSupabaseEnv } from "@/lib/env";
+import { SESSION_COOKIE, verifySession } from "@/lib/auth/token";
+import { getServerEnv } from "@/lib/env";
 
 /** Routes accessibles sans être connecté. */
-const PUBLIC_PREFIXES = ["/connexion", "/auth/"];
+const PUBLIC_PREFIXES = ["/connexion"];
 
 function isPublic(pathname: string): boolean {
-  return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p));
+  return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
 /**
- * Rafraîchit la session Supabase à chaque navigation et protège les routes
- * privées (vérification optimiste ; chaque accès aux données revérifie
- * l'utilisateur côté serveur et la RLS filtre en base).
+ * Protège les routes privées à chaque navigation (vérification optimiste du
+ * cookie signé, sans base de données ; chaque accès aux données revérifie la
+ * session côté serveur et la RLS filtre en base).
  */
 export async function proxy(request: NextRequest) {
-  const env = getSupabaseEnv();
+  const env = getServerEnv();
   if (!env) return NextResponse.next(); // l'application affichera l'erreur de configuration
 
-  let response = NextResponse.next({ request });
-  const supabase = createServerClient(env.url, env.key, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet, headers) {
-        for (const { name, value } of cookiesToSet) request.cookies.set(name, value);
-        response = NextResponse.next({ request });
-        for (const { name, value, options } of cookiesToSet) response.cookies.set(name, value, options);
-        for (const [key, value] of Object.entries(headers ?? {})) response.headers.set(key, value);
-      },
-    },
-  });
-
-  const { data } = await supabase.auth.getClaims();
-  const signedIn = !!data?.claims?.sub;
+  const session = await verifySession(request.cookies.get(SESSION_COOKIE)?.value, env.authSecret);
+  const signedIn = session !== null;
   const { pathname, search } = request.nextUrl;
 
   const redirectTo = (path: string) => {
@@ -42,14 +27,15 @@ export async function proxy(request: NextRequest) {
     url.pathname = path;
     url.search = "";
     if (path === "/connexion" && pathname !== "/") url.searchParams.set("suite", pathname + search);
-    const redirect = NextResponse.redirect(url);
-    for (const cookie of response.cookies.getAll()) redirect.cookies.set(cookie);
-    return redirect;
+    const response = NextResponse.redirect(url);
+    // Cookie présent mais invalide ou expiré : on le retire.
+    if (!signedIn && request.cookies.has(SESSION_COOKIE)) response.cookies.delete(SESSION_COOKIE);
+    return response;
   };
 
   if (!signedIn && !isPublic(pathname)) return redirectTo("/connexion");
   if (signedIn && pathname === "/connexion") return redirectTo("/");
-  return response;
+  return NextResponse.next();
 }
 
 export const config = {

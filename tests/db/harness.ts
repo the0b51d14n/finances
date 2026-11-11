@@ -1,33 +1,17 @@
 /**
  * Banc d'essai PostgreSQL pour les tests d'intégration.
  *
- * Démarre un PostgreSQL embarqué (PGlite), recrée le strict nécessaire de
- * l'environnement Supabase (schéma auth, auth.uid(), rôles anon/authenticated
- * et leurs privilèges par défaut), puis applique les migrations du dépôt dans
- * l'ordre. Les requêtes « utilisateur » s'exécutent sous le rôle authenticated
- * avec le JWT simulé, donc sous RLS, exactement comme via PostgREST.
+ * Démarre un PostgreSQL embarqué (PGlite) et applique les migrations du dépôt
+ * dans l'ordre (la première crée auth.users, auth.uid() et les rôles). Les
+ * requêtes « utilisateur » s'exécutent sous le rôle authenticated avec
+ * l'identifiant posé dans request.jwt.claim.sub, donc sous RLS, exactement
+ * comme l'application (src/lib/db/user-db.ts).
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 
-const MIGRATIONS_DIR = join(process.cwd(), "supabase", "migrations");
-
-const SUPABASE_BOOTSTRAP = `
-  create schema auth;
-  create table auth.users (id uuid primary key);
-  create function auth.uid() returns uuid language sql stable as $$
-    select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
-  $$;
-  create role anon nologin;
-  create role authenticated nologin;
-  grant usage on schema public to anon, authenticated;
-  grant usage on schema auth to anon, authenticated;
-  grant execute on function auth.uid() to anon, authenticated;
-  alter default privileges in schema public grant all on tables to anon, authenticated;
-  alter default privileges in schema public grant all on sequences to anon, authenticated;
-  alter default privileges in schema public grant all on functions to anon, authenticated;
-`;
+const MIGRATIONS_DIR = join(process.cwd(), "db", "migrations");
 
 export type TestDb = {
   db: PGlite;
@@ -45,7 +29,6 @@ export type TestDb = {
 
 export async function createTestDb(): Promise<TestDb> {
   const db = await PGlite.create();
-  await db.exec(SUPABASE_BOOTSTRAP);
 
   const files = readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith(".sql"))
@@ -73,7 +56,7 @@ export async function createTestDb(): Promise<TestDb> {
 
   const createUser = async () => {
     const [{ id }] = await admin<{ id: string }>(
-      "insert into auth.users (id) values (gen_random_uuid()) returning id",
+      "insert into auth.users (email, password_hash) values ('u-' || gen_random_uuid() || '@test.local', 'x') returning id",
     );
     await asUser(id, "select public.ensure_user_setup()");
     return id;

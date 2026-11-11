@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { parseBackup } from "@/lib/backup";
 import { dbErrorMessage } from "@/lib/data/errors";
 import { getSession } from "@/lib/data/session";
+import { sql } from "@/lib/db/sql";
 
 /** Taille maximale acceptée (limite de corps des fonctions Vercel : 4,5 Mo). */
 const MAX_BYTES = 4_000_000;
@@ -30,8 +31,8 @@ export async function POST(request: Request) {
   const parsed = parseBackup(raw);
   if (!parsed.ok) return reply({ error: parsed.error }, 422);
 
-  const { supabase } = await getSession();
-  const { error } = await supabase.rpc("import_backup", { p: parsed.payload });
+  const { db } = await getSession();
+  const { error } = await db.exec(sql`select public.import_backup(${parsed.payload}::jsonb)`);
   if (error) return reply({ error: dbErrorMessage(error) }, 409);
   revalidatePath("/", "layout");
   return reply({ ok: true, counts: parsed.counts });

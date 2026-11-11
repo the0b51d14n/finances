@@ -30,7 +30,7 @@ export default function ErrorBoundary({ error, retry }: { error: Error & { diges
       {error.name === "ConfigurationError" && <p className="small">{error.message}</p>}
       {online && (
         <p className="faint tiny">
-          Première installation ? Vérifiez les variables d&apos;environnement Supabase et l&apos;application des migrations (README).
+          Première installation ? Vérifiez les variables d&apos;environnement (DATABASE_URL, AUTH_SECRET) et l&apos;application des migrations (README).
           {error.digest ? ` Référence : ${error.digest}` : ""}
         </p>
       )}

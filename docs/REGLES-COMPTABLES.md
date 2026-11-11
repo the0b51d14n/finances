@@ -3,7 +3,7 @@
 Ce document fixe les règles appliquées partout dans l'application. Chaque règle
 est implémentée dans une fonction pure de `src/lib/domain/` et couverte par les
 tests de `tests/unit/` ; les invariants comptables sont en outre revérifiés par
-la base de données (`supabase/migrations/`).
+la base de données (`db/migrations/`).
 
 ## 1. Montants
 

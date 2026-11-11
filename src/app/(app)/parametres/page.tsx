@@ -98,7 +98,7 @@ async function Settings() {
           <h2>Export et sauvegarde</h2>
         </div>
         <p className="small muted">
-          Vos données sont stockées dans votre base Supabase et synchronisées entre vos appareils. Téléchargez régulièrement une sauvegarde complète.
+          Vos données sont stockées dans votre base Neon et synchronisées entre vos appareils. Téléchargez régulièrement une sauvegarde complète.
         </p>
         <div className="row">
           <a href="/api/export?format=json" className="btn" download>

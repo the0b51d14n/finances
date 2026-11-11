@@ -1,28 +1,29 @@
 /**
- * Variables d'environnement publiques de Supabase.
- * La clé publiable (anon) est conçue pour être exposée : la sécurité repose
- * sur la RLS. Aucune clé secrète (service_role) n'est utilisée par l'application.
+ * Variables d'environnement du serveur (jamais préfixées NEXT_PUBLIC_ : elles
+ * ne sont donc jamais incluses dans le code envoyé au navigateur).
+ *  - DATABASE_URL : chaîne de connexion Neon PostgreSQL ;
+ *  - AUTH_SECRET  : clé de signature des cookies de session (32 caractères min.).
  */
-export type SupabaseEnv = { url: string; key: string };
+export type ServerEnv = { databaseUrl: string; authSecret: string };
 
-export function getSupabaseEnv(): SupabaseEnv | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  return { url, key };
+const MIN_SECRET_LENGTH = 32;
+
+export function getServerEnv(): ServerEnv | null {
+  const databaseUrl = process.env.DATABASE_URL;
+  const authSecret = process.env.AUTH_SECRET;
+  if (!databaseUrl || !authSecret || authSecret.length < MIN_SECRET_LENGTH) return null;
+  return { databaseUrl, authSecret };
 }
 
 export class ConfigurationError extends Error {
   constructor() {
-    super(
-      "Configuration incomplète : définissez NEXT_PUBLIC_SUPABASE_URL et NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (voir README).",
-    );
+    super("Configuration incomplète : définissez DATABASE_URL et AUTH_SECRET (32 caractères minimum), voir README.");
     this.name = "ConfigurationError";
   }
 }
 
-export function requireSupabaseEnv(): SupabaseEnv {
-  const env = getSupabaseEnv();
+export function requireServerEnv(): ServerEnv {
+  const env = getServerEnv();
   if (!env) throw new ConfigurationError();
   return env;
 }

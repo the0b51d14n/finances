@@ -1,6 +1,6 @@
 /**
  * Types métier partagés par les calculs, l'accès aux données et l'interface.
- * Ils reflètent le schéma SQL (supabase/migrations) en camelCase.
+ * Ils reflètent le schéma SQL (db/migrations) en camelCase.
  */
 import type { Cents } from "@/lib/money";
 import type { IsoDate } from "@/lib/dates";
