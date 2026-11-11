@@ -11,7 +11,7 @@ import { ACCOUNT_COLUMNS, toAccount } from "@/lib/data/mappers";
 import { getSession } from "@/lib/data/session";
 import { deleteById, insertInto, raw, sql, updateWhere } from "@/lib/db/sql";
 import type { UserDb } from "@/lib/db/user-db";
-import { balancesAt, typeChangeAllowed } from "@/lib/domain/accounts";
+import { balancesAt, hasExpiry, typeChangeAllowed } from "@/lib/domain/accounts";
 import { forecastEventsFor } from "@/lib/domain/dashboard";
 import { adjustmentFor, buildEntries, type EntryInput } from "@/lib/domain/ledger";
 import { proposeMoneyPath } from "@/lib/domain/money-path";
@@ -272,7 +272,7 @@ export async function saveAccountAction(_prev: ActionState, formData: FormData):
     subtype: v.subtype,
     opening_balance_cents: v.opening_balance,
     opening_balance_date: v.opening_balance_date,
-    valid_until: v.type === "meal_voucher" ? v.valid_until : null,
+    valid_until: hasExpiry(v.type) ? v.valid_until : null,
     institution: v.institution,
     notes: v.notes,
   };

@@ -10,9 +10,9 @@
  *  - Reste jusqu'au prochain revenu : disponible − réservé − réserve de sécurité.
  *  - Revenus / dépenses du mois : opérations confirmées du mois calendaire.
  */
-import type { Cents } from "@/lib/money";
+import { formatCents, type Cents } from "@/lib/money";
 import { addDays, addMonthsToKey, diffDays, formatDate, monthKeyOf, monthRange, type IsoDate } from "@/lib/dates";
-import { accountClass, balancesAt, totalsByClass, type BalanceTotals } from "./accounts";
+import { accountClass, balancesAt, hasExpiry, totalsByClass, type BalanceTotals } from "./accounts";
 import { budgetPeriodRange, evaluateBudget, inRange, spentInRange, type BudgetEvaluation } from "./budgets";
 import {
   FORECAST_HORIZON_DAYS,
@@ -209,13 +209,13 @@ export function computeDashboard(input: DashboardInput): DashboardData {
     }
   }
   for (const a of accounts) {
-    if (a.archivedAt || a.type !== "meal_voucher" || !a.validUntil) continue;
+    if (a.archivedAt || !hasExpiry(a.type) || !a.validUntil) continue;
     const balance = balances.get(a.id) ?? 0;
     if (balance > 0 && a.validUntil >= today && diffDays(today, a.validUntil) <= VOUCHER_EXPIRY_WARNING_DAYS) {
       alerts.push({
         level: "warning",
-        title: "Tickets-restaurant bientôt expirés",
-        detail: `${a.name} : validité jusqu'au ${formatDate(a.validUntil)}.`,
+        title: a.type === "meal_voucher" ? "Tickets-restaurant bientôt expirés" : `${a.name} expire bientôt`,
+        detail: `${formatCents(balance)} à utiliser avant le ${formatDate(a.validUntil)}.`,
         href: `/comptes/${a.id}`,
       });
     }

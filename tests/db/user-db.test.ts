@@ -228,6 +228,15 @@ describe("lecture complète de l'application (loadFinanceData)", () => {
     expect(await count()).toBe(before + 3);
   });
 
+  it("accepte une date d'expiration sur un bon d'achat, pas sur un compte courant", async () => {
+    const voucher = await alice.exec(
+      insertInto("accounts", { name: "Bon Fnac", type: "earmarked", subtype: "store_credit", opening_balance_cents: 2_500, opening_balance_date: "2026-11-01", valid_until: "2027-03-31" }),
+    );
+    expect(voucher.error).toBeNull();
+    const checking = await alice.exec(insertInto("accounts", { name: "Courant", type: "checking", opening_balance_date: "2026-11-01", valid_until: "2027-03-31" }));
+    expect(checking.error?.code).toBe("23514");
+  });
+
   it("traduit les erreurs des fonctions SQL en messages", async () => {
     const res = await alice.exec(sql`select public.delete_transaction(${"00000000-0000-0000-0000-000000000000"}::uuid)`);
     expect(dbErrorMessage(res.error)).toBe("Élément introuvable ou inaccessible.");

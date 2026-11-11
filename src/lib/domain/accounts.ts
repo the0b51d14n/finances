@@ -77,6 +77,11 @@ export function accountTypeRules(type: AccountType): AccountTypeRules {
 }
 
 /** Les ressources affectées (tickets, cartes cadeaux…) ne peuvent faire l'objet d'aucun transfert. */
+/** Comptes pouvant porter une date d'expiration : tickets-restaurant et ressources affectées (cartes cadeaux, bons d'achat…). */
+export function hasExpiry(type: AccountType): boolean {
+  return type === "meal_voucher" || type === "earmarked";
+}
+
 export function isTransferable(type: AccountType): boolean {
   return type !== "meal_voucher" && type !== "earmarked";
 }

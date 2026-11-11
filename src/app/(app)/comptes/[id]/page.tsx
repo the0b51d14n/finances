@@ -11,7 +11,7 @@ import { Badge, Notice, PageHeader, PageSkeleton, StatTile } from "@/components/
 import { formatDate } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
 import { accountKindLabel, accountSubtype } from "@/lib/domain/account-kinds";
-import { ACCOUNT_CLASS_LABELS, accountClass, balancesAt, countsInBalance } from "@/lib/domain/accounts";
+import { ACCOUNT_CLASS_LABELS, accountClass, balancesAt, countsInBalance, hasExpiry } from "@/lib/domain/accounts";
 import { centsToInput, formatCents } from "@/lib/money";
 
 export const metadata: Metadata = { title: "Compte" };
@@ -91,9 +91,9 @@ async function AccountDetail({
         <StatTile label={isVoucher ? "Crédits reçus" : "Entrées effectuées"} cents={credits} />
         <StatTile label={isVoucher ? "Dépenses en tickets" : "Sorties effectuées"} cents={-debits} />
       </section>
-      {isVoucher && account.validUntil && (
-        <p className="muted small">
-          Validité indiquée : jusqu&apos;au {formatDate(account.validUntil)}.
+      {hasExpiry(account.type) && account.validUntil && (
+        <p className={account.validUntil < data.today ? "neg small" : "muted small"}>
+          {account.validUntil < data.today ? "Expiré depuis le" : "Valable jusqu'au"} {formatDate(account.validUntil)}.
         </p>
       )}
 

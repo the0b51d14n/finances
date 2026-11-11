@@ -6,6 +6,7 @@
 import { z } from "zod";
 import { isValidIsoDate } from "@/lib/dates";
 import { ACCOUNT_SUBTYPE_KEYS, subtypeType } from "@/lib/domain/account-kinds";
+import { hasExpiry } from "@/lib/domain/accounts";
 import { parseAmountToCents } from "@/lib/money";
 
 const FREQUENCIES = ["daily", "weekly", "biweekly", "monthly", "quarterly", "semiannual", "annual"] as const;
@@ -217,8 +218,12 @@ export const accountSchema = z
     if (type === "debt" && v.opening_balance < 0) {
       ctx.addIssue({ code: "custom", path: ["opening_balance"], message: "Saisissez le montant restant dû en positif." });
     }
-    if (v.valid_until && type !== "meal_voucher") {
-      ctx.addIssue({ code: "custom", path: ["valid_until"], message: "La validité ne concerne que les tickets-restaurant." });
+    if (v.valid_until && !hasExpiry(type)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["valid_until"],
+        message: "La date d'expiration ne concerne que les tickets-restaurant, cartes cadeaux, bons d'achat et ressources affectées.",
+      });
     }
   })
   .transform((v) => {

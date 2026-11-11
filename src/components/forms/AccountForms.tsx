@@ -4,7 +4,7 @@ import { useState } from "react";
 import { adjustBalanceAction, saveAccountAction } from "@/app/actions/ledger";
 import { Field, FormMessage, useServerForm } from "@/components/ui/forms";
 import { ACCOUNT_KIND_GROUPS, ACCOUNT_SUBTYPES, type AccountSubtype, subtypeType } from "@/lib/domain/account-kinds";
-import { ACCOUNT_CLASS_LABELS, accountClass, accountTypeRules, type AccountTypeRules } from "@/lib/domain/accounts";
+import { ACCOUNT_CLASS_LABELS, accountClass, accountTypeRules, hasExpiry, type AccountTypeRules } from "@/lib/domain/accounts";
 import type { AccountType } from "@/lib/domain/types";
 import { formatCents } from "@/lib/money";
 import { accountSchema, balanceAdjustmentSchema } from "@/lib/validation/schemas";
@@ -143,8 +143,12 @@ export function AccountForm({
           />
         </Field>
       </div>
-      {type === "meal_voucher" && (
-        <Field id="valid_until" label="Validité des tickets (facultatif)" error={errors.valid_until}>
+      {hasExpiry(type) && (
+        <Field
+          id="valid_until"
+          label={type === "meal_voucher" ? "Validité des tickets (facultatif)" : "Date d'expiration (facultatif)"}
+          error={errors.valid_until}
+        >
           <input id="valid_until" name="valid_until" type="date" className="input" defaultValue={initial.validUntil} />
         </Field>
       )}
