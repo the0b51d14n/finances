@@ -153,7 +153,7 @@ export const transactionSchema = z
     repeat: z.enum(["none", ...FREQUENCIES]).default("none"),
     /** Achat planifié réalisé par cette opération (marqué « acheté » après enregistrement). */
     purchase_plan_id: optionalUuid,
-    /** Chemin de l'argent : virements préalables à une dépense ponctuelle (JSON). */
+    /** Chemin de l'argent : virements préalables à la dépense (JSON), répétés si elle est récurrente. */
     path: pathField,
   })
   .superRefine((v, ctx) => {
@@ -175,8 +175,10 @@ export const transactionSchema = z
     }
     if (!!v.recurrence_id !== !!v.occurrence_date) issue("occurrence_date", "Échéance de récurrence incomplète.");
     if (v.path.length > 0) {
-      if (v.kind !== "expense" || v.id || v.repeat !== "none" || v.recurrence_id) {
-        issue("path", "Le chemin de l'argent ne concerne qu'une nouvelle dépense ponctuelle.");
+      // Dépense récurrente : chaque virement du chemin devient un virement
+      // récurrent de même fréquence, rattaché à la dépense.
+      if (v.kind !== "expense" || v.id || v.recurrence_id) {
+        issue("path", "Le chemin de l'argent ne concerne qu'une nouvelle dépense.");
       }
       for (const step of v.path) {
         if (step.from_account_id === step.to_account_id) issue("path", "Chaque virement doit relier deux comptes différents.");

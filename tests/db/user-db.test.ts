@@ -228,6 +228,61 @@ describe("lecture complète de l'application (loadFinanceData)", () => {
     expect(await count()).toBe(before + 3);
   });
 
+  it("chemin de l'argent récurrent : le virement revient à chaque échéance et disparaît avec la dépense", async () => {
+    const newAccount = async (name: string) =>
+      String((await alice.returning(insertInto("accounts", { name, type: "checking", opening_balance_cents: 10_000, opening_balance_date: "2026-01-01" }, "id"))).data![0].id);
+    const secondaire = await newAccount("Secondaire (abonnement)");
+    const principal = await newAccount("Principal (abonnement)");
+    const category = await alice.row<{ id: string }>(sql`select id from public.categories where kind = 'expense' limit 1`);
+    const abonnement = "00000000-0000-4000-8000-0000000000a1";
+    const virement = "00000000-0000-4000-8000-0000000000a2";
+    const rule = (row: Record<string, unknown>) => sql`${insertInto("recurring_rules", row)} on conflict (id) do nothing`;
+    const save = (p: Record<string, unknown>) => sql`select public.save_transaction(${p}::jsonb) as id`;
+    // Ce qu'enregistre le formulaire : règles, premier virement et première dépense, ensemble.
+    const queries = [
+      rule({ id: abonnement, kind: "expense", label: "Abonnement", amount_cents: 2_160, account_id: principal, category_id: category.data!.id, frequency: "monthly", start_date: "2026-09-06", tracking_start: "2026-09-06" }),
+      rule({ id: virement, kind: "transfer", label: "Virement pour « Abonnement »", amount_cents: 2_160, account_id: secondaire, to_account_id: principal, frequency: "monthly", start_date: "2026-09-05", tracking_start: "2026-09-05", funded_rule_id: abonnement }),
+      save({ client_request_id: "00000000-0000-4000-8000-0000000000a3", kind: "transfer", status: "confirmed", date: "2026-09-05", label: "Virement pour « Abonnement »", amount_cents: 2_160, recurrence_id: virement, occurrence_date: "2026-09-05", entries: [{ account_id: secondaire, amount_cents: -2_160 }, { account_id: principal, amount_cents: 2_160 }] }),
+      save({ client_request_id: "00000000-0000-4000-8000-0000000000a4", kind: "expense", status: "confirmed", date: "2026-09-06", label: "Abonnement", amount_cents: 2_160, category_id: category.data!.id, recurrence_id: abonnement, occurrence_date: "2026-09-06", entries: [{ account_id: principal, amount_cents: -2_160 }] }),
+    ];
+    expect((await alice.execAll(queries)).error).toBeNull();
+    // Double soumission : rien n'est recréé.
+    expect((await alice.execAll(queries)).error).toBeNull();
+
+    const load = async () => {
+      const r = await alice.batch(DATA_QUERIES);
+      return { accounts: r.data![1].map(toAccount), transactions: r.data![3].map(toTransaction), rules: r.data![4].map(toRule) };
+    };
+    const data = await load();
+    expect(data.rules.find((r) => r.id === virement)?.fundedRuleId).toBe(abonnement);
+    expect(data.transactions.filter((t) => t.label.includes("Abonnement"))).toHaveLength(2);
+
+    // Échéances suivantes : virement la veille, dépense le jour même, chaque mois.
+    const mine = dueRealizations({ today: "2026-11-06", ...data }).flatMap((d) =>
+      d.type === "occurrence" && (d.ruleId === virement || d.ruleId === abonnement) ? [[d.ruleId === virement ? "virement" : "dépense", d.date]] : [],
+    );
+    expect(mine).toEqual([
+      ["dépense", "2026-10-06"],
+      ["dépense", "2026-11-06"],
+      ["virement", "2026-10-05"],
+      ["virement", "2026-11-05"],
+    ]);
+
+    // Un virement du chemin est forcément un virement.
+    const invalid = await alice.exec(
+      insertInto("recurring_rules", { kind: "expense", label: "x", amount_cents: 1, account_id: principal, category_id: category.data!.id, frequency: "monthly", start_date: "2026-09-06", funded_rule_id: abonnement }),
+    );
+    expect(invalid.error?.code).toBe("23514");
+
+    // Suppression de la dépense : son virement récurrent disparaît, l'historique reste.
+    expect((await alice.exec(sql`select public.delete_recurring_rule(${abonnement}::uuid)`)).error).toBeNull();
+    const after = await load();
+    expect(after.rules.some((r) => r.id === abonnement || r.id === virement)).toBe(false);
+    const kept = after.transactions.filter((t) => t.label.includes("Abonnement"));
+    expect(kept).toHaveLength(2);
+    expect(kept.every((t) => t.recurrenceId === null)).toBe(true);
+  });
+
   it("accepte une date d'expiration sur un bon d'achat, pas sur un compte courant", async () => {
     const voucher = await alice.exec(
       insertInto("accounts", { name: "Bon Fnac", type: "earmarked", subtype: "store_credit", opening_balance_cents: 2_500, opening_balance_date: "2026-11-01", valid_until: "2027-03-31" }),

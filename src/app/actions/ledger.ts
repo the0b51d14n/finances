@@ -1,6 +1,6 @@
 "use server";
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { failure, safeReturnTo, success, type ActionState } from "@/lib/actions/state";
@@ -9,7 +9,7 @@ import { dbErrorMessage } from "@/lib/data/errors";
 import { loadFinanceData } from "@/lib/data/load";
 import { ACCOUNT_COLUMNS, toAccount } from "@/lib/data/mappers";
 import { getSession } from "@/lib/data/session";
-import { deleteById, insertInto, raw, sql, updateWhere } from "@/lib/db/sql";
+import { deleteById, insertInto, raw, sql, updateWhere, type Query } from "@/lib/db/sql";
 import type { UserDb } from "@/lib/db/user-db";
 import { balancesAt, hasExpiry, typeChangeAllowed } from "@/lib/domain/accounts";
 import { forecastEventsFor } from "@/lib/domain/dashboard";
@@ -95,36 +95,34 @@ export async function saveTransactionAction(_prev: ActionState, formData: FormDa
     }
   }
 
-  // Option « répéter » : crée la règle et lie cette opération comme sa première échéance.
-  let recurrenceId = v.recurrence_id;
-  let occurrenceDate = v.occurrence_date;
-  let createdRuleId: string | null = null;
-  if (v.repeat !== "none" && !v.id && v.kind !== "adjustment") {
-    const { data: ruleRows, error: ruleError } = await db.returning(
-      insertInto(
-        "recurring_rules",
-        {
-          kind: v.kind,
-          label: v.label,
-          amount_cents: v.amount,
-          account_id: v.account_id,
-          to_account_id: v.kind === "transfer" ? v.to_account_id : null,
-          category_id: categoryId,
-          frequency: v.repeat,
-          start_date: v.date,
-          tracking_start: v.date,
-        },
-        "id",
-      ),
+  // Option « répéter » : crée la règle et lie cette opération comme sa première
+  // échéance. Identifiant dérivé de celui de la requête : une double soumission
+  // ne recrée pas la règle.
+  const ruleId = v.repeat !== "none" && !v.id && v.kind !== "adjustment" ? derivedId(v.client_request_id, "regle") : null;
+  const recurrenceId = ruleId ?? v.recurrence_id;
+  const occurrenceDate = ruleId ? v.date : v.occurrence_date;
+  const ruleInserts: Query[] = [];
+  if (ruleId) {
+    ruleInserts.push(
+      insertRule({
+        id: ruleId,
+        kind: v.kind,
+        label: v.label,
+        amount_cents: v.amount,
+        account_id: v.account_id,
+        to_account_id: v.kind === "transfer" ? v.to_account_id : null,
+        category_id: categoryId,
+        frequency: v.repeat,
+        start_date: v.date,
+        tracking_start: v.date,
+      }),
     );
-    const ruleRow = ruleRows?.[0];
-    if (ruleError || !ruleRow) return failure(dbErrorMessage(ruleError));
-    createdRuleId = String(ruleRow.id);
-    recurrenceId = createdRuleId;
-    occurrenceDate = v.date;
   }
 
-  // Chemin de l'argent : virements préalables, enregistrés avec la dépense.
+  // Chemin de l'argent : virements préalables, enregistrés avec la dépense. Si
+  // elle est récurrente, chaque virement devient un virement récurrent de même
+  // fréquence (même écart avec la dépense), rattaché à elle : il revient à
+  // chaque échéance. Ce virement-ci est sa première échéance.
   const today = todayParis();
   const pathPayloads: Record<string, unknown>[] = [];
   for (const [i, step] of v.path.entries()) {
@@ -133,13 +131,34 @@ export async function saveTransactionAction(_prev: ActionState, formData: FormDa
       accounts,
     );
     if (!transfer.ok) return failure(INVALID, { path: `Virement ${i + 1} du chemin : ${transfer.error}` });
+    const label = `Virement pour « ${v.label} »`;
+    const stepRuleId = ruleId ? derivedId(v.client_request_id, `regle:chemin:${i}`) : null;
+    if (stepRuleId) {
+      ruleInserts.push(
+        insertRule({
+          id: stepRuleId,
+          kind: "transfer",
+          label,
+          amount_cents: step.amount_cents,
+          account_id: step.from_account_id,
+          to_account_id: step.to_account_id,
+          category_id: null,
+          frequency: v.repeat,
+          start_date: step.date,
+          tracking_start: step.date,
+          funded_rule_id: ruleId,
+        }),
+      );
+    }
     pathPayloads.push({
       client_request_id: stepRequestId(v.client_request_id, i),
       kind: "transfer",
       status: step.date > today ? "planned" : "confirmed",
       date: step.date,
-      label: `Virement pour « ${v.label} »`,
+      label,
       amount_cents: step.amount_cents,
+      recurrence_id: stepRuleId,
+      occurrence_date: stepRuleId ? step.date : null,
       entries: entriesPayload(transfer.entries),
     });
   }
@@ -161,11 +180,21 @@ export async function saveTransactionAction(_prev: ActionState, formData: FormDa
     entries: entriesPayload(built.entries),
   };
 
-  // Virements et dépense dans une seule transaction : tout est enregistré, ou rien.
+  // Règles, virements et dépense dans une seule transaction : tout est enregistré, ou rien.
+  const saves = [...pathPayloads, payload].map((p) => sql`select public.save_transaction(${p}::jsonb) as id`);
   let savedId: string | undefined;
   let error;
-  if (pathPayloads.length > 0) {
-    const res = await db.batch([...pathPayloads, payload].map((p) => sql`select public.save_transaction(${p}::jsonb) as id`));
+  if (ruleId) {
+    const res = await db.execAll([...ruleInserts, ...saves]);
+    error = res.error;
+    if (!error) {
+      const found = await db.row<{ id: string }>(
+        sql`select id from public.transactions where recurrence_id = ${ruleId} and occurrence_date = ${v.date}`,
+      );
+      savedId = found.data?.id;
+    }
+  } else if (saves.length > 1) {
+    const res = await db.batch(saves);
     error = res.error;
     savedId = res.data?.at(-1)?.[0]?.id as string | undefined;
   } else {
@@ -173,10 +202,7 @@ export async function saveTransactionAction(_prev: ActionState, formData: FormDa
     error = res.error;
     savedId = res.data?.id;
   }
-  if (error) {
-    if (createdRuleId) await db.exec(deleteById("recurring_rules", createdRuleId));
-    return failure(dbErrorMessage(error));
-  }
+  if (error) return failure(dbErrorMessage(error));
 
   // L'opération réalise un achat planifié : il sort du calendrier d'achats.
   if (v.purchase_plan_id && status !== "cancelled") {
@@ -184,7 +210,13 @@ export async function saveTransactionAction(_prev: ActionState, formData: FormDa
   }
 
   refreshAll();
-  redirect(safeReturnTo(values.return_to, `/operations/${String(savedId)}`));
+  redirect(safeReturnTo(values.return_to, savedId ? `/operations/${savedId}` : "/operations"));
+}
+
+/** UUID déterministe (version 5, SHA-256) tiré d'une graine. */
+function uuidFrom(seed: string): string {
+  const h = createHash("sha256").update(seed).digest("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${((parseInt(h[16], 16) & 0x3) | 0x8).toString(16)}${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 
 /**
@@ -192,10 +224,16 @@ export async function saveTransactionAction(_prev: ActionState, formData: FormDa
  * dépense : une double soumission ne recrée aucun virement (même UUID).
  */
 function stepRequestId(requestId: string | null, index: number): string | null {
-  if (!requestId) return null;
-  const h = createHash("sha256").update(`${requestId}:chemin:${index}`).digest("hex");
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${((parseInt(h[16], 16) & 0x3) | 0x8).toString(16)}${h.slice(17, 20)}-${h.slice(20, 32)}`;
+  return requestId ? uuidFrom(`${requestId}:chemin:${index}`) : null;
 }
+
+/** Identifiant d'une règle créée avec l'opération, dérivé de la requête (sinon aléatoire). */
+function derivedId(requestId: string | null, tag: string): string {
+  return requestId ? uuidFrom(`${requestId}:${tag}`) : randomUUID();
+}
+
+/** Crée une règle ; déjà présente (double soumission), elle reste telle quelle. */
+const insertRule = (row: Record<string, unknown>) => sql`${insertInto("recurring_rules", row)} on conflict (id) do nothing`;
 
 export type MoneyPathResult =
   | {
@@ -207,9 +245,9 @@ export type MoneyPathResult =
   | { ok: false; error: string };
 
 /**
- * Propose le chemin de l'argent pour une dépense ponctuelle (voir
- * src/lib/domain/money-path.ts). Ne modifie rien : le formulaire affiche la
- * proposition, modifiable, et l'enregistre avec la dépense.
+ * Propose le chemin de l'argent d'une dépense, ou de la première échéance d'une
+ * dépense récurrente (voir src/lib/domain/money-path.ts). Ne modifie rien : le
+ * formulaire affiche la proposition, modifiable, et l'enregistre avec la dépense.
  */
 export async function proposeMoneyPathAction(accountId: string, amount: string, date: string): Promise<MoneyPathResult> {
   const amountCents = parseAmountToCents(amount);
@@ -382,19 +420,45 @@ export async function saveRuleAction(_prev: ActionState, formData: FormData): Pr
     notes: v.notes,
   };
 
+  // Virements du chemin de l'argent : ils suivent la dépense qu'ils alimentent
+  // (fréquence, fin, suspension). Leur montant et leur date restent les leurs.
+  const followers = (ruleId: string) => ({ frequency: v.frequency, end_date: v.end_date, is_active: v.is_active, funded_rule_id: ruleId });
+
   if (v.id && v.apply_from) {
     // Modification « à partir du » : la règle actuelle s'arrête la veille, une
     // nouvelle règle prend le relais. Les échéances passées restent inchangées.
     const start = nextOccurrence({ frequency: v.frequency, startDate: v.start_date, endDate: v.end_date }, v.apply_from);
     if (!start) return failure(INVALID, { apply_from: "Aucune échéance à partir de cette date." });
-    const { error: endError } = await db.exec(updateWhere("recurring_rules", { end_date: addDays(v.apply_from, -1) }, "id", v.id));
-    if (endError) return failure(dbErrorMessage(endError));
-    const { error } = await db.exec(insertInto("recurring_rules", { ...row, start_date: start, tracking_start: v.apply_from }));
+    const { data: current } = await db.row<{ funded_rule_id: string | null }>(sql`select funded_rule_id from public.recurring_rules where id = ${v.id}`);
+    if (!current) return failure("Échéance récurrente introuvable.");
+    const nextId = randomUUID();
+    const { error } = await db.execAll([
+      updateWhere("recurring_rules", { end_date: addDays(v.apply_from, -1) }, "id", v.id),
+      insertInto("recurring_rules", {
+        ...row,
+        id: nextId,
+        start_date: start,
+        tracking_start: v.apply_from,
+        funded_rule_id: v.kind === "transfer" ? current.funded_rule_id : null,
+      }),
+      updateWhere("recurring_rules", followers(nextId), "funded_rule_id", v.id),
+    ]);
     if (error) return failure(dbErrorMessage(error));
   } else if (v.id) {
-    const { error } = await db.exec(
-      updateWhere("recurring_rules", { ...row, ...(v.tracking_start ? { tracking_start: v.tracking_start } : {}) }, "id", v.id),
-    );
+    const { error } = await db.execAll([
+      updateWhere(
+        "recurring_rules",
+        {
+          ...row,
+          ...(v.tracking_start ? { tracking_start: v.tracking_start } : {}),
+          // Un virement du chemin changé en dépense ou revenu n'alimente plus rien.
+          ...(v.kind !== "transfer" ? { funded_rule_id: null } : {}),
+        },
+        "id",
+        v.id,
+      ),
+      updateWhere("recurring_rules", followers(v.id), "funded_rule_id", v.id),
+    ]);
     if (error) return failure(dbErrorMessage(error));
   } else {
     const { error } = await db.exec(insertInto("recurring_rules", { ...row, tracking_start: v.tracking_start ?? todayParis() }));
@@ -408,7 +472,11 @@ export async function toggleRuleAction(_prev: ActionState, formData: FormData): 
   const id = String(formData.get("id") ?? "");
   const active = formData.get("active") === "1";
   const { db } = await getSession();
-  const { error } = await db.exec(updateWhere("recurring_rules", { is_active: active }, "id", id));
+  // Les virements du chemin de l'argent sont suspendus ou réactivés avec la dépense.
+  const { error } = await db.execAll([
+    updateWhere("recurring_rules", { is_active: active }, "id", id),
+    updateWhere("recurring_rules", { is_active: active }, "funded_rule_id", id),
+  ]);
   if (error) return failure(dbErrorMessage(error));
   refreshAll();
   return success(active ? "Récurrence réactivée." : "Récurrence suspendue : plus aucune échéance ne sera attendue.");

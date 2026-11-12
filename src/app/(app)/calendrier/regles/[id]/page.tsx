@@ -37,6 +37,9 @@ async function Rule({ params }: { params: PageProps<"/calendrier/regles/[id]">["
   const occurrences = listOccurrences(rule, from, addMonths(data.today, 6), data.today, index).reverse();
   const realized = data.transactions.filter((t) => t.recurrenceId === rule.id && t.status === "confirmed");
   const totalRealized = realized.reduce((s, t) => s + t.amountCents, 0);
+  // Chemin de l'argent récurrent : virements qui alimentent cette dépense, ou dépense alimentée par ce virement.
+  const fundingRules = data.rules.filter((r) => r.fundedRuleId === rule.id);
+  const fundedRule = rule.fundedRuleId ? data.rules.find((r) => r.id === rule.fundedRuleId) : undefined;
 
   return (
     <div className="stack">
@@ -93,7 +96,44 @@ async function Rule({ params }: { params: PageProps<"/calendrier/regles/[id]">["
             </dd>
           </div>
         </dl>
+        {fundedRule && (
+          <p className="small muted" style={{ margin: 0 }}>
+            Virement du chemin de l&apos;argent de{" "}
+            <Link href={`/calendrier/regles/${fundedRule.id}`} className="link">
+              {fundedRule.label}
+            </Link>
+            {" "}: il suit sa fréquence, sa fin et sa suspension, et disparaît avec elle.
+          </p>
+        )}
       </section>
+
+      {fundingRules.length > 0 && (
+        <section className="card stack-sm">
+          <div className="card-header">
+            <h2>Chemin de l&apos;argent</h2>
+          </div>
+          <p className="small muted" style={{ margin: 0 }}>
+            Virements répétés avant chaque échéance. Ils suivent la fréquence, la fin et la suspension de cette dépense ; leur montant se modifie sur leur
+            propre page.
+          </p>
+          <ul className="list">
+            {fundingRules.map((r) => (
+              <li key={r.id}>
+                <Link href={`/calendrier/regles/${r.id}`} className="list-main link">
+                  <span>
+                    {accountsById.get(r.accountId)?.name} → {r.toAccountId ? accountsById.get(r.toAccountId)?.name : "?"}
+                  </span>
+                  <span className="faint tiny">
+                    depuis le {formatDate(r.startDate)}
+                    {r.isActive ? "" : " · suspendu"}
+                  </span>
+                </Link>
+                <span className="num">{formatCents(r.amountCents)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="card">
         <div className="card-header">
@@ -164,7 +204,11 @@ async function Rule({ params }: { params: PageProps<"/calendrier/regles/[id]">["
           action={deleteRuleAction}
           fields={{ id: rule.id }}
           className="btn btn-danger"
-          confirm="Supprimer cette échéance récurrente ? Les opérations déjà enregistrées sont conservées (détachées de la règle)."
+          confirm={
+            fundingRules.length > 0
+              ? "Supprimer cette échéance récurrente et les virements récurrents de son chemin de l'argent ? Les opérations déjà enregistrées sont conservées (détachées)."
+              : "Supprimer cette échéance récurrente ? Les opérations déjà enregistrées sont conservées (détachées de la règle)."
+          }
         >
           <Icon name="trash" size={16} /> Supprimer
         </ActionButton>

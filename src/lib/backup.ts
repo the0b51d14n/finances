@@ -144,6 +144,7 @@ const backupSchema = z.object({
         certainty: z.enum(["certain", "probable", "uncertain"]),
         isActive: z.boolean(),
         notes: text(1000).nullable().optional(),
+        fundedRuleId: ref.nullable().optional(),
       }),
     )
     .default([]),
@@ -243,6 +244,9 @@ export function parseBackup(raw: unknown): ParsedBackup {
   for (const r of b.recurringRules) {
     if (!accounts.has(r.accountId) || (r.toAccountId && !accounts.has(r.toAccountId))) return missing(`compte de l'échéance « ${r.label} »`);
     if (r.categoryId && !categories.has(r.categoryId)) return missing(`catégorie de l'échéance « ${r.label} »`);
+    if (r.fundedRuleId && (r.kind !== "transfer" || r.fundedRuleId === r.id || !rules.has(r.fundedRuleId))) {
+      return missing(`dépense alimentée par le virement « ${r.label} »`);
+    }
   }
   for (const t of b.transactions) {
     if (t.entries.some((e) => !accounts.has(e.accountId))) return missing(`compte de l'opération « ${t.label} »`);
@@ -297,6 +301,7 @@ export function parseBackup(raw: unknown): ParsedBackup {
       certainty: r.certainty,
       is_active: r.isActive,
       notes: r.notes ?? null,
+      funded_rule_id: r.fundedRuleId ?? null,
     })),
     transactions: b.transactions.map((t) => ({
       kind: t.kind,

@@ -59,6 +59,7 @@ export function TransactionForm({
   // Aucune confirmation : une date future est « à venir », sinon l'opération est effectuée.
   const status: TransactionStatus = initial.status === "cancelled" ? "cancelled" : date > today ? "planned" : "confirmed";
   const [accountId, setAccountId] = useState(initial.accountId);
+  const [repeat, setRepeat] = useState("none");
   const [useVouchers, setUseVouchers] = useState(Number(initial.voucherAmount.replace(",", ".")) > 0);
 
   const editing = !!initial.id;
@@ -219,13 +220,14 @@ export function TransactionForm({
           amount={amount}
           date={date}
           today={today}
+          recurrence={repeat === "none" ? null : (FREQUENCY_LABELS[repeat as keyof typeof FREQUENCY_LABELS] ?? null)}
           error={err("path")}
         />
       )}
 
       {!editing && kind !== "adjustment" && !initial.recurrenceId && (
         <Field id="repeat" label="Récurrence" error={err("repeat")} hint="Crée aussi l'échéance récurrente, visible dans le calendrier.">
-          <select id="repeat" name="repeat" className="select" defaultValue="none">
+          <select id="repeat" name="repeat" className="select" value={repeat} onChange={(e) => setRepeat(e.target.value)}>
             <option value="none">Ne pas répéter</option>
             {Object.entries(FREQUENCY_LABELS).map(([value, label]) => (
               <option key={value} value={value}>
