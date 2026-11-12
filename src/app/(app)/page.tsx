@@ -66,7 +66,7 @@ async function Dashboard() {
 
   // Dernières opérations saisies (hors prévues), pour vérifier la saisie du jour.
   const accountsById = new Map(data.accounts.map((a) => [a.id, a]));
-  const recent = data.transactions.filter((t) => t.status !== "planned").slice(0, RECENT_COUNT);
+  const recent = data.transactions.filter((t) => t.status === "confirmed").slice(0, RECENT_COUNT);
 
   // Reste à vivre : disponible − échéances à venir − réserve de sécurité.
   const hasScheduled = d.nextIncome !== null || d.reservedCents > 0;

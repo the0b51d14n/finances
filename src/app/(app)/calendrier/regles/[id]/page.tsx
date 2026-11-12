@@ -34,7 +34,10 @@ async function Rule({ params }: { params: PageProps<"/calendrier/regles/[id]">["
   const category = rule.categoryId ? data.categories.find((c) => c.id === rule.categoryId) : undefined;
   const index = realizationIndex(data.transactions);
   const from = maxDate(rule.startDate, addMonths(data.today, -12));
-  const occurrences = listOccurrences(rule, from, addMonths(data.today, 6), data.today, index).reverse();
+  // Les échéances ignorées (opération annulée) ne sont pas affichées.
+  const occurrences = listOccurrences(rule, from, addMonths(data.today, 6), data.today, index)
+    .filter((o) => o.status !== "skipped")
+    .reverse();
   const realized = data.transactions.filter((t) => t.recurrenceId === rule.id && t.status === "confirmed");
   const totalRealized = realized.reduce((s, t) => s + t.amountCents, 0);
   // Chemin de l'argent récurrent : virements qui alimentent cette dépense, ou dépense alimentée par ce virement.

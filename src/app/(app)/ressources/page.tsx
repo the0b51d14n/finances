@@ -77,7 +77,7 @@ async function Resources() {
           <div className="stack">
             {incomeRules.map((rule) => {
               const occurrences = listOccurrences(rule, maxDate(rule.startDate, addMonths(today, -6)), addMonths(today, 2), today, index)
-                .filter((o) => o.status !== "untracked")
+                .filter((o) => o.status !== "untracked" && o.status !== "skipped")
                 .reverse()
                 .slice(0, 8);
               const next = rule.isActive ? nextOccurrence(rule, today) : null;

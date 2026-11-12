@@ -42,7 +42,7 @@ async function AccountDetail({
   const balance = balancesAt(data.accounts, data.transactions, data.today).get(account.id) ?? account.openingBalanceCents;
   const related = data.transactions.filter((tx) => tx.entries.some((e) => e.accountId === account.id));
   const planned = related.filter((tx) => tx.status === "planned");
-  const history = related.filter((tx) => tx.status !== "planned");
+  const history = related.filter((tx) => tx.status === "confirmed");
   const beforeOpening = related.filter((tx) => tx.status === "confirmed" && tx.date < account.openingBalanceDate);
 
   // Solde après chaque opération comptabilisée (ordre chronologique).
