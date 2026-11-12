@@ -86,7 +86,7 @@ describe("planification des achats d'emménagement", () => {
     expect(result.entries.map((e) => [e.item.id, e.date, e.status, e.cumulativeCents, e.availableAfterCents])).toEqual([
       ["lit", "2026-10-26", "scheduled", 40_000, 45_000],
       ["frigo", "2026-10-28", "scheduled", 100_000, 125_000],
-      ["canape", "2026-11-28", "scheduled", 250_000, 108_000],
+      ["canape", "2026-11-30", "scheduled", 250_000, 108_000], // salaire du samedi 28 reporté au lundi 30
       ["table", "2026-12-01", "scheduled", 260_000, 95_000],
     ]);
     expect(result.scheduledCents).toBe(260_000);

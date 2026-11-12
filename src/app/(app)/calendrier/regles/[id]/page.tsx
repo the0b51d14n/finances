@@ -10,7 +10,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Amount, Badge, PageHeader, PageSkeleton } from "@/components/ui/primitives";
 import { addMonths, formatDate, maxDate } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
-import { FREQUENCY_LABELS, OCCURRENCE_STATUS_LABELS, listOccurrences, monthlyEquivalentCents, realizationIndex } from "@/lib/domain/recurrence";
+import { FREQUENCY_LABELS, OCCURRENCE_STATUS_LABELS, listOccurrences, monthlyEquivalentCents, realizationIndex, ruleClosedWeekdays } from "@/lib/domain/recurrence";
 import { centsToInput, formatCents } from "@/lib/money";
 import { CERTAINTY_LABELS, KIND_LABELS } from "@/lib/view/labels";
 
@@ -35,7 +35,7 @@ async function Rule({ params }: { params: PageProps<"/calendrier/regles/[id]">["
   const index = realizationIndex(data.transactions);
   const from = maxDate(rule.startDate, addMonths(data.today, -12));
   // Les échéances ignorées (opération annulée) ne sont pas affichées.
-  const occurrences = listOccurrences(rule, from, addMonths(data.today, 6), data.today, index)
+  const occurrences = listOccurrences(rule, from, addMonths(data.today, 6), data.today, index, ruleClosedWeekdays(rule, accountsById))
     .filter((o) => o.status !== "skipped")
     .reverse();
   const realized = data.transactions.filter((t) => t.recurrenceId === rule.id && t.status === "confirmed");
@@ -147,8 +147,11 @@ async function Rule({ params }: { params: PageProps<"/calendrier/regles/[id]">["
             <li key={occ.date} style={{ flexDirection: "column", alignItems: "stretch" }}>
               <div className="row-between">
                 <span className="list-main">
-                  <span>{formatDate(occ.date)}</span>
-                  {occ.transaction && occ.transaction.date !== occ.date && (
+                  <span>
+                    {formatDate(occ.dueDate)}
+                    {occ.dueDate !== occ.date && <span className="faint tiny"> (prévu le {formatDate(occ.date, "short")}, jour non ouvré)</span>}
+                  </span>
+                  {occ.transaction && occ.transaction.date !== occ.dueDate && (
                     <span className="faint tiny">enregistrée le {formatDate(occ.transaction.date)}</span>
                   )}
                 </span>

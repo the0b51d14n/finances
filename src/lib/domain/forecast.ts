@@ -23,7 +23,7 @@ import type { Cents } from "@/lib/money";
 import { addDays, type IsoDate } from "@/lib/dates";
 import { accountClass, deltaOnClass } from "./accounts";
 import { budgetPeriodRange, inRange, spentInRange, type DateRange } from "./budgets";
-import { listOccurrences, realizationIndex } from "./recurrence";
+import { listOccurrences, realizationIndex, ruleClosedWeekdays } from "./recurrence";
 import type { Account, Budget, Certainty, Entry, RecurringRule, Transaction } from "./types";
 
 export const FORECAST_HORIZON_DAYS = 365;
@@ -98,12 +98,13 @@ export function buildForecastEvents(ctx: ForecastContext): ForecastEvent[] {
   for (const rule of ctx.rules) {
     if (!rule.isActive) continue;
     const delta = ruleDelta(rule, accountsById);
-    for (const occ of listOccurrences(rule, rule.trackingStart, horizonEnd, today, index)) {
+    for (const occ of listOccurrences(rule, rule.trackingStart, horizonEnd, today, index, ruleClosedWeekdays(rule, accountsById))) {
       if (occ.status !== "pending" && occ.status !== "overdue") continue;
       const overdue = occ.status === "overdue";
       events.push({
-        date: overdue ? today : occ.date,
-        originalDate: occ.date,
+        // Date effective : un week-end ou un jour férié passe au jour ouvré suivant.
+        date: overdue ? today : occ.dueDate,
+        originalDate: occ.dueDate,
         overdue,
         deltaCents: delta,
         grossCents: rule.amountCents,

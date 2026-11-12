@@ -211,6 +211,12 @@ export const accountSchema = z
     valid_until: optionalDate,
     institution: optionalText(60),
     notes: optionalText(1000),
+    /** Jours (lundi … vendredi) où la banque ne traite pas les opérations : cases à cocher. */
+    closed_weekday_1: checkbox,
+    closed_weekday_2: checkbox,
+    closed_weekday_3: checkbox,
+    closed_weekday_4: checkbox,
+    closed_weekday_5: checkbox,
   })
   .superRefine((v, ctx) => {
     const type = subtypeType(v.subtype);

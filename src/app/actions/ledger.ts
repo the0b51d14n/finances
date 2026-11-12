@@ -15,7 +15,7 @@ import { balancesAt, hasExpiry, typeChangeAllowed } from "@/lib/domain/accounts"
 import { forecastEventsFor } from "@/lib/domain/dashboard";
 import { adjustmentFor, buildEntries, type EntryInput } from "@/lib/domain/ledger";
 import { proposeMoneyPath } from "@/lib/domain/money-path";
-import { nextOccurrence } from "@/lib/domain/recurrence";
+import { nextOccurrence, planStopFrom } from "@/lib/domain/recurrence";
 import type { Account, Entry } from "@/lib/domain/types";
 import { centsToInput, parseAmountToCents } from "@/lib/money";
 import {
@@ -282,7 +282,28 @@ export async function proposeMoneyPathAction(accountId: string, amount: string, 
  */
 export async function deleteTransactionAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const id = String(formData.get("id") ?? "");
+  const returnTo = safeReturnTo(String(formData.get("return_to") ?? ""), "/operations");
   const { db } = await getSession();
+
+  // « Celle-ci et les suivantes » : la récurrence (et son chemin de l'argent)
+  // s'arrête avant cette échéance ; les opérations de cette échéance et des
+  // suivantes sont supprimées. Tout ou rien, dans une seule transaction.
+  if (formData.get("scope") === "following") {
+    const data = await loadFinanceData();
+    const tx = data.transactions.find((t) => t.id === id);
+    const rule = tx?.recurrenceId ? data.rules.find((r) => r.id === tx.recurrenceId) : undefined;
+    if (!tx || !rule || !tx.occurrenceDate) return failure("Échéance récurrente introuvable.");
+    const plan = planStopFrom(rule, tx.occurrenceDate, data.rules, data.transactions);
+    const { error } = await db.execAll([
+      ...plan.transactionIds.map((txId) => sql`select public.delete_transaction(${txId}::uuid)`),
+      ...plan.endRules.map((r) => updateWhere("recurring_rules", { end_date: r.endDate }, "id", r.id)),
+      ...plan.deleteRuleIds.map((ruleId) => sql`select public.delete_recurring_rule(${ruleId}::uuid)`),
+    ]);
+    if (error) return failure(dbErrorMessage(error));
+    refreshAll();
+    redirect(returnTo);
+  }
+
   const { data: existing } = await db.row<{ recurrence_id: string | null }>(sql`select recurrence_id from public.transactions where id = ${id}`);
   const { error } = await db.exec(
     existing?.recurrence_id
@@ -291,7 +312,7 @@ export async function deleteTransactionAction(_prev: ActionState, formData: Form
   );
   if (error) return failure(dbErrorMessage(error));
   refreshAll();
-  redirect(safeReturnTo(String(formData.get("return_to") ?? ""), "/operations"));
+  redirect(returnTo);
 }
 
 // -----------------------------------------------------------------------------
@@ -313,6 +334,8 @@ export async function saveAccountAction(_prev: ActionState, formData: FormData):
     valid_until: hasExpiry(v.type) ? v.valid_until : null,
     institution: v.institution,
     notes: v.notes,
+    // Tableau PostgreSQL (smallint[]) : les tableaux JS seraient transmis en JSON.
+    closed_weekdays: `{${([1, 2, 3, 4, 5] as const).filter((d) => v[`closed_weekday_${d}`]).join(",")}}`,
   };
 
   let accountId = v.id;

@@ -50,6 +50,8 @@ export type Account = {
   notes: string | null;
   archivedAt: string | null;
   createdAt: string;
+  /** Jours (1 = lundi … 7 = dimanche) où la banque ne traite pas les opérations. */
+  closedWeekdays: number[];
 };
 
 export type Category = {
