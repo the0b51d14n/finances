@@ -42,8 +42,10 @@ async function Operations({ searchParams }: { searchParams: Promise<Search> }) {
   const order = one(params.tri) === "asc" ? "asc" : "desc";
   const page = Math.max(1, Number(one(params.page)) || 1);
 
+  // Les opérations annulées (échéances ignorées) n'apparaissent pas.
   const filtered = data.transactions.filter(
     (tx) =>
+      tx.status !== "cancelled" &&
       (!q || tx.label.toLowerCase().includes(q) || (tx.notes ?? "").toLowerCase().includes(q)) &&
       (!account || tx.entries.some((e) => e.accountId === account)) &&
       (!category || tx.categoryId === category) &&
@@ -138,7 +140,7 @@ async function Operations({ searchParams }: { searchParams: Promise<Search> }) {
             <label htmlFor="statut">Statut</label>
             <select id="statut" name="statut" className="select" defaultValue={status}>
               <option value="">Tous</option>
-              {Object.entries(STATUS_LABELS).map(([v, l]) => (
+              {Object.entries(STATUS_LABELS).filter(([v]) => v !== "cancelled").map(([v, l]) => (
                 <option key={v} value={v}>
                   {l}
                 </option>

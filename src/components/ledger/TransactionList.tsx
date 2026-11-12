@@ -23,10 +23,12 @@ export function TransactionList({
   runningBalances?: Map<string, Cents>;
   emptyText?: string;
 }) {
-  if (transactions.length === 0) return <p className="muted small">{emptyText}</p>;
+  // Les opérations annulées (échéances ignorées) ne sont jamais affichées.
+  const visible = transactions.filter((tx) => tx.status !== "cancelled");
+  if (visible.length === 0) return <p className="muted small">{emptyText}</p>;
   return (
     <ul className="list">
-      {transactions.map((tx) => {
+      {visible.map((tx) => {
         const category = tx.categoryId ? categoriesById.get(tx.categoryId) : undefined;
         const voucherCents = tx.entries
           .filter((e) => accountsById.get(e.accountId)?.type === "meal_voucher" && e.amountCents < 0 && tx.kind === "expense")
@@ -50,10 +52,10 @@ export function TransactionList({
         const muted = tx.status !== "confirmed";
         const running = runningBalances?.get(tx.id);
         return (
-          <li key={tx.id} style={{ opacity: tx.status === "cancelled" ? 0.6 : 1 }}>
+          <li key={tx.id}>
             <Link href={`/operations/${tx.id}`} className="list-link">
               <span className="list-main">
-                <span style={{ fontWeight: 500, textDecoration: tx.status === "cancelled" ? "line-through" : undefined }}>{tx.label}</span>
+                <span style={{ fontWeight: 500 }}>{tx.label}</span>
                 <span className="faint tiny">
                   {formatDate(tx.date, "short")} · {category?.name ?? KIND_LABELS[tx.kind]} · {accountsText}
                 </span>

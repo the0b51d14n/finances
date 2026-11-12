@@ -56,7 +56,8 @@ async function Calendar({ searchParams }: { searchParams: Promise<Search> }) {
   const items: CalendarItem[] = [];
   for (const rule of data.rules) {
     for (const occ of listOccurrences(rule, start, end, today, index)) {
-      if (occ.status === "untracked") continue;
+      // Hors suivi ou ignorée (opération annulée) : rien à afficher.
+      if (occ.status === "untracked" || occ.status === "skipped") continue;
       items.push({
         date: occ.transaction && occ.status === "realized" ? occ.transaction.date : occ.date,
         label: rule.label,
