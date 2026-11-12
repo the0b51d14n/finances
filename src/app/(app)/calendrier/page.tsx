@@ -17,7 +17,7 @@ import {
   type IsoDate,
 } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
-import { FREQUENCY_LABELS, OCCURRENCE_STATUS_LABELS, listOccurrences, monthlyEquivalentCents, nextOccurrence, realizationIndex, type OccurrenceStatus } from "@/lib/domain/recurrence";
+import { FREQUENCY_LABELS, OCCURRENCE_STATUS_LABELS, listOccurrences, monthlyEquivalentCents, nextDueDate, realizationIndex, ruleClosedWeekdays, type OccurrenceStatus } from "@/lib/domain/recurrence";
 import { formatCents } from "@/lib/money";
 import { KIND_LABELS } from "@/lib/view/labels";
 import styles from "./calendar.module.css";
@@ -52,14 +52,15 @@ async function Calendar({ searchParams }: { searchParams: Promise<Search> }) {
   const start = startOfMonth(month);
   const end = endOfMonth(month);
   const index = realizationIndex(data.transactions);
+  const accountsById = new Map(data.accounts.map((a) => [a.id, a]));
 
   const items: CalendarItem[] = [];
   for (const rule of data.rules) {
-    for (const occ of listOccurrences(rule, start, end, today, index)) {
+    for (const occ of listOccurrences(rule, start, end, today, index, ruleClosedWeekdays(rule, accountsById))) {
       // Hors suivi ou ignorée (opération annulée) : rien à afficher.
       if (occ.status === "untracked" || occ.status === "skipped") continue;
       items.push({
-        date: occ.transaction && occ.status === "realized" ? occ.transaction.date : occ.date,
+        date: occ.transaction && occ.status === "realized" ? occ.transaction.date : occ.dueDate,
         label: rule.label,
         kind: rule.kind,
         amountCents: occ.transaction?.amountCents ?? rule.amountCents,
@@ -188,7 +189,7 @@ async function Calendar({ searchParams }: { searchParams: Promise<Search> }) {
         ) : (
           <ul className="list">
             {data.rules.map((rule) => {
-              const next = rule.isActive ? nextOccurrence(rule, today) : null;
+              const next = rule.isActive ? nextDueDate(rule, today, ruleClosedWeekdays(rule, accountsById)) : null;
               return (
                 <li key={rule.id}>
                   <Link href={`/calendrier/regles/${rule.id}`} className="list-link">

@@ -6,10 +6,10 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { beforeAll, describe, expect, it } from "vitest";
 import { dbErrorMessage } from "@/lib/data/errors";
-import { toAccount, toRule, toSettings, toTransaction } from "@/lib/data/mappers";
+import { ACCOUNT_COLUMNS, toAccount, toRule, toSettings, toTransaction } from "@/lib/data/mappers";
 import { dueRealizations, type DueRealization } from "@/lib/domain/realization";
 import { DATA_QUERIES } from "@/lib/data/queries";
-import { deleteById, insertInto, sql, updateWhere } from "@/lib/db/sql";
+import { deleteById, insertInto, raw, sql, updateWhere } from "@/lib/db/sql";
 import { userDb, type Executor, type UserDb } from "@/lib/db/user-db";
 import { createTestDb, type TestDb } from "./harness";
 
@@ -281,6 +281,15 @@ describe("lecture complète de l'application (loadFinanceData)", () => {
     const kept = after.transactions.filter((t) => t.label.includes("Abonnement"));
     expect(kept).toHaveLength(2);
     expect(kept.every((t) => t.recurrenceId === null)).toBe(true);
+  });
+
+  it("enregistre et relit les jours de fermeture de la banque d'un compte", async () => {
+    expect((await alice.exec(updateWhere("accounts", { closed_weekdays: "{1}" }, "id", aliceAccount))).error).toBeNull();
+    const { data } = await alice.row(sql`select ${raw(ACCOUNT_COLUMNS)} from public.accounts where id = ${aliceAccount}`);
+    expect(toAccount(data!).closedWeekdays).toEqual([1]);
+    const invalid = await alice.exec(updateWhere("accounts", { closed_weekdays: "{8}" }, "id", aliceAccount));
+    expect(invalid.error?.code).toBe("23514");
+    await alice.exec(updateWhere("accounts", { closed_weekdays: "{}" }, "id", aliceAccount));
   });
 
   it("accepte une date d'expiration sur un bon d'achat, pas sur un compte courant", async () => {

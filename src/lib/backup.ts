@@ -111,6 +111,7 @@ const backupSchema = z.object({
         institution: text(60).nullable().optional(),
         notes: text(1000).nullable().optional(),
         archivedAt: timestamp.nullable().optional(),
+        closedWeekdays: z.array(z.number().int().min(1).max(7)).max(7).optional(),
       }),
     )
     .default([]),
@@ -276,6 +277,7 @@ export function parseBackup(raw: unknown): ParsedBackup {
       institution: a.institution ?? null,
       notes: a.notes ?? null,
       archived_at: a.archivedAt ?? null,
+      closed_weekdays: [...new Set(a.closedWeekdays ?? [])],
     })),
     categories: b.categories.map((c) => ({
       id: c.id,

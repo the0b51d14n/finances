@@ -40,7 +40,17 @@ export type AccountFormValues = {
   validUntil: string;
   institution: string;
   notes: string;
+  /** Jours (1 = lundi … 5 = vendredi) où la banque ne traite pas les opérations. */
+  closedWeekdays: number[];
 };
+
+const WEEKDAYS = [
+  [1, "lundi"],
+  [2, "mardi"],
+  [3, "mercredi"],
+  [4, "jeudi"],
+  [5, "vendredi"],
+] as const;
 
 export function AccountForm({
   initial,
@@ -151,6 +161,23 @@ export function AccountForm({
         >
           <input id="valid_until" name="valid_until" type="date" className="input" defaultValue={initial.validUntil} />
         </Field>
+      )}
+      {rules.transferable && (
+        <fieldset className="stack-sm" style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend className="small">Jours où la banque ne traite pas les opérations (facultatif)</legend>
+          <div className="row" style={{ flexWrap: "wrap", gap: 12 }}>
+            {WEEKDAYS.map(([day, label]) => (
+              <label key={day} className="checkbox">
+                <input type="checkbox" name={`closed_weekday_${day}`} defaultChecked={initial.closedWeekdays.includes(day)} />
+                {label}
+              </label>
+            ))}
+          </div>
+          <p className="faint tiny" style={{ margin: 0 }}>
+            Les échéances récurrentes payées par ce compte sautent ces jours-là, en plus des week-ends et jours fériés (ex. banque fermée le lundi :
+            un prélèvement du lundi passe au mardi).
+          </p>
+        </fieldset>
       )}
       <p className="faint small">{TYPE_HELP[type]}</p>
       <p className="faint tiny" aria-label="Règles de calcul de ce type">

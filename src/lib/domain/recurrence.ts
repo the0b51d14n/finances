@@ -11,10 +11,14 @@
  *  - « hors suivi » : antérieure au début de suivi de la règle (réputée
  *    incluse dans les soldes initiaux, jamais comptée).
  * Il n'y a aucune confirmation : une échéance compte dès que sa date est atteinte.
+ *
+ * Jours ouvrés : une échéance qui tombe un samedi, un dimanche ou un jour férié
+ * est reportée au jour ouvré suivant (date effective, `dueDate`). Sa date
+ * théorique reste sa clé.
  */
 import type { Cents } from "@/lib/money";
-import { addDays, addMonths, diffDays, diffMonths, maxDate, minDate, parts, type IsoDate } from "@/lib/dates";
-import type { Frequency, RecurringRule, Transaction } from "./types";
+import { addDays, addMonths, diffDays, diffMonths, maxDate, minDate, nextBusinessDay, parts, type IsoDate } from "@/lib/dates";
+import type { Account, Frequency, RecurringRule, Transaction } from "./types";
 
 export const FREQUENCY_LABELS: Record<Frequency, string> = {
   daily: "Quotidienne",
@@ -100,10 +104,34 @@ export const OCCURRENCE_STATUS_LABELS: Record<OccurrenceStatus, string> = {
 
 export type Occurrence = {
   rule: RecurringRule;
-  date: IsoDate; // date prévue
+  /** Date théorique de l'échéance : sa clé (occurrence_date), jamais décalée. */
+  date: IsoDate;
+  /** Date effective : un week-end, un jour férié ou un jour de fermeture de la banque passe au jour ouvré suivant. */
+  dueDate: IsoDate;
   status: OccurrenceStatus;
   transaction: Transaction | null;
 };
+
+/**
+ * Jours de fermeture qui s'appliquent à une règle : ceux de la banque du compte
+ * débité (compte de la dépense ou du revenu, compte de départ d'un virement).
+ */
+export function ruleClosedWeekdays(rule: Pick<RecurringRule, "accountId">, accountsById: Map<string, Account>): number[] {
+  return accountsById.get(rule.accountId)?.closedWeekdays ?? [];
+}
+
+/**
+ * Prochaine date effective (jour ouvré) à partir de `onOrAfter` inclus. Une
+ * échéance théorique tout juste passée mais reportée (week-end, jour férié,
+ * fermeture de la banque) compte : on regarde jusqu'à 7 jours en arrière.
+ */
+export function nextDueDate(rule: Schedule, onOrAfter: IsoDate, closedWeekdays: readonly number[] = []): IsoDate | null {
+  for (const date of occurrenceDates(rule, addDays(onOrAfter, -7), addDays(onOrAfter, 800))) {
+    const due = nextBusinessDay(date, closedWeekdays);
+    if (due >= onOrAfter) return due;
+  }
+  return null;
+}
 
 export function listOccurrences(
   rule: RecurringRule,
@@ -111,25 +139,67 @@ export function listOccurrences(
   to: IsoDate,
   today: IsoDate,
   index: Map<string, Transaction>,
+  /** Jours de fermeture de la banque du compte débité (voir ruleClosedWeekdays). */
+  closedWeekdays: readonly number[] = [],
 ): Occurrence[] {
   const result: Occurrence[] = [];
   for (const date of occurrenceDates(rule, from, to)) {
+    const dueDate = nextBusinessDay(date, closedWeekdays);
     const tx = index.get(occurrenceKey(rule.id, date)) ?? null;
     if (tx) {
       const status: OccurrenceStatus =
         tx.status === "confirmed" ? "realized" : tx.status === "planned" ? "planned" : "skipped";
-      result.push({ rule, date, status, transaction: tx });
+      result.push({ rule, date, dueDate, status, transaction: tx });
       continue;
     }
     // Une règle désactivée ne produit plus d'échéances attendues.
     if (!rule.isActive) continue;
     if (date < rule.trackingStart) {
-      result.push({ rule, date, status: "untracked", transaction: null });
+      result.push({ rule, date, dueDate, status: "untracked", transaction: null });
     } else {
-      result.push({ rule, date, status: date < today ? "overdue" : "pending", transaction: null });
+      result.push({ rule, date, dueDate, status: dueDate < today ? "overdue" : "pending", transaction: null });
     }
   }
   return result;
+}
+
+export type StopPlan = {
+  /** Opérations liées à supprimer (cette échéance et les suivantes). */
+  transactionIds: string[];
+  /** Règles qui continuent jusqu'à la veille de la coupure. */
+  endRules: { id: string; endDate: IsoDate }[];
+  /** Règles sans plus aucune échéance : supprimées (virements du chemin d'abord). */
+  deleteRuleIds: string[];
+};
+
+/**
+ * « Supprimer celle-ci et les suivantes » : arrête la règle à partir de
+ * l'échéance `from`. Ses virements du chemin de l'argent s'arrêtent aussi, à
+ * partir du premier virement qui suit l'échéance précédente (celui qui
+ * alimentait `from`). Les opérations déjà enregistrées pour ces échéances sont
+ * supprimées ; les échéances antérieures restent intactes.
+ */
+export function planStopFrom(rule: RecurringRule, from: IsoDate, rules: RecurringRule[], transactions: Transaction[]): StopPlan {
+  const previous = occurrenceDates(rule, rule.startDate, addDays(from, -1)).at(-1) ?? null;
+  const cuts: { rule: RecurringRule; from: IsoDate }[] = [];
+  for (const child of rules.filter((r) => r.fundedRuleId === rule.id)) {
+    const childFrom = previous ? nextOccurrence(child, addDays(previous, 1), 3_700) : child.startDate;
+    if (childFrom) cuts.push({ rule: child, from: childFrom });
+  }
+  cuts.push({ rule, from });
+
+  const plan: StopPlan = { transactionIds: [], endRules: [], deleteRuleIds: [] };
+  for (const cut of cuts) {
+    for (const tx of transactions) {
+      if (tx.recurrenceId === cut.rule.id && tx.occurrenceDate && tx.occurrenceDate >= cut.from) plan.transactionIds.push(tx.id);
+    }
+    if (cut.from <= cut.rule.startDate) plan.deleteRuleIds.push(cut.rule.id);
+    else {
+      const endDate = addDays(cut.from, -1);
+      if (!cut.rule.endDate || cut.rule.endDate > endDate) plan.endRules.push({ id: cut.rule.id, endDate });
+    }
+  }
+  return plan;
 }
 
 /** Montant mensuel équivalent, pour comparer des charges de périodicités différentes. */

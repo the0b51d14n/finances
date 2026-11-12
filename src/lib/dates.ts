@@ -105,6 +105,77 @@ export function isoWeekday(iso: IsoDate): number {
   return day === 0 ? 7 : day;
 }
 
+/** Dimanche de Pâques (calendrier grégorien, algorithme de Meeus/Jones/Butcher). */
+export function easterSunday(year: number): IsoDate {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return makeDate(year, month, day);
+}
+
+const bankHolidayCache = new Map<number, Set<IsoDate>>();
+
+/**
+ * Jours sans prélèvement ni virement : jours fériés de France métropolitaine,
+ * plus les fermetures du système de paiement européen TARGET (Vendredi saint,
+ * 26 décembre), qui s'appliquent aux prélèvements et virements SEPA.
+ */
+export function bankHolidays(year: number): Set<IsoDate> {
+  let set = bankHolidayCache.get(year);
+  if (!set) {
+    const easter = easterSunday(year);
+    set = new Set([
+      makeDate(year, 1, 1), // Jour de l'an
+      addDays(easter, -2), // Vendredi saint (TARGET)
+      addDays(easter, 1), // Lundi de Pâques
+      makeDate(year, 5, 1), // Fête du travail
+      makeDate(year, 5, 8), // Victoire 1945
+      addDays(easter, 39), // Ascension
+      addDays(easter, 50), // Lundi de Pentecôte
+      makeDate(year, 7, 14), // Fête nationale
+      makeDate(year, 8, 15), // Assomption
+      makeDate(year, 11, 1), // Toussaint
+      makeDate(year, 11, 11), // Armistice
+      makeDate(year, 12, 25), // Noël
+      makeDate(year, 12, 26), // Lendemain de Noël (TARGET)
+    ]);
+    bankHolidayCache.set(year, set);
+  }
+  return set;
+}
+
+/**
+ * Jour ouvré bancaire : ni samedi, ni dimanche, ni jour férié (voir
+ * bankHolidays), ni un jour de fermeture propre à la banque (1 = lundi … 7).
+ */
+export function isBusinessDay(iso: IsoDate, closedWeekdays: readonly number[] = []): boolean {
+  const weekday = isoWeekday(iso);
+  return weekday <= 5 && !closedWeekdays.includes(weekday) && !bankHolidays(parts(iso).year).has(iso);
+}
+
+/**
+ * Premier jour ouvré à partir de cette date incluse : un week-end, un jour
+ * férié ou un jour de fermeture de la banque passe au jour ouvré suivant.
+ */
+export function nextBusinessDay(iso: IsoDate, closedWeekdays: readonly number[] = []): IsoDate {
+  // Garde-fou : une banque « fermée » tous les jours ouvrés ne bloque jamais la boucle.
+  const closed = closedWeekdays.filter((d) => d >= 1 && d <= 5).length >= 5 ? [] : closedWeekdays;
+  let day = iso;
+  while (!isBusinessDay(day, closed)) day = addDays(day, 1);
+  return day;
+}
+
 /** Semaines du lundi au dimanche (usage français). */
 export function startOfWeek(iso: IsoDate): IsoDate {
   return addDays(iso, 1 - isoWeekday(iso));

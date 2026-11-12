@@ -3,7 +3,8 @@ import { accountTypeRules, balancesAt, totalsByClass, typeChangeAllowed } from "
 import { budgetPeriodRange, evaluateBudget, spentInRange } from "@/lib/domain/budgets";
 import { goalAccumulated, goalProgress, overAllocatedAccounts } from "@/lib/domain/goals";
 import { adjustmentFor, buildEntries, entriesToInput, expenseSplit, frequentOperations, possibleDuplicates } from "@/lib/domain/ledger";
-import { listOccurrences, monthlyEquivalentCents, occurrenceDates, realizationIndex } from "@/lib/domain/recurrence";
+import { easterSunday, nextBusinessDay } from "@/lib/dates";
+import { listOccurrences, monthlyEquivalentCents, nextDueDate, occurrenceDates, planStopFrom, realizationIndex, ruleClosedWeekdays } from "@/lib/domain/recurrence";
 import type { SavingsGoal } from "@/lib/domain/types";
 import { account, byId, expense, income, rule, transfer, tx } from "./fixtures";
 
@@ -239,6 +240,69 @@ describe("récurrences", () => {
     ]);
     const inactive = listOccurrences({ ...r, isActive: false }, "2026-01-01", "2026-05-31", "2026-04-10", realizationIndex([realized]));
     expect(inactive.map((o) => o.status)).toEqual(["realized"]);
+  });
+
+  it("reporte au lundi une échéance du samedi ou du dimanche, sans changer sa clé", () => {
+    expect(["2026-11-13", "2026-11-14", "2026-11-15", "2026-11-16"].map((d) => nextBusinessDay(d))).toEqual([
+      "2026-11-13", // vendredi : inchangé
+      "2026-11-16", // samedi → lundi
+      "2026-11-16", // dimanche → lundi
+      "2026-11-16", // lundi : inchangé
+    ]);
+    const r = rule({ kind: "expense", amountCents: 2_160, accountId: "chk", startDate: "2026-11-14", trackingStart: "2026-11-01" });
+    const [first] = listOccurrences(r, "2026-11-01", "2026-11-30", "2026-11-15", realizationIndex([]));
+    // Samedi 14 → lundi 16 : le dimanche 15, l'échéance est encore à venir.
+    expect(first).toMatchObject({ date: "2026-11-14", dueDate: "2026-11-16", status: "pending" });
+    expect(nextDueDate(r, "2026-11-15")).toBe("2026-11-16");
+    expect(nextDueDate(r, "2026-11-17")).toBe("2026-12-14");
+  });
+
+  it("reporte aussi les jours fériés au jour ouvré suivant", () => {
+    expect(easterSunday(2026)).toBe("2026-04-05");
+    expect(easterSunday(2025)).toBe("2025-04-20");
+    // Abonnement du 25 : Noël 2025 (jeudi), 26 fermé (TARGET), week-end → lundi 29.
+    expect(nextBusinessDay("2025-12-25")).toBe("2025-12-29");
+    expect(nextBusinessDay("2026-05-01")).toBe("2026-05-04"); // vendredi 1er mai → lundi 4
+    expect(nextBusinessDay("2026-04-06")).toBe("2026-04-07"); // lundi de Pâques → mardi
+    expect(nextBusinessDay("2026-05-14")).toBe("2026-05-15"); // Ascension → vendredi
+    expect(nextBusinessDay("2026-04-03")).toBe("2026-04-07"); // Vendredi saint (TARGET) → mardi
+    expect(nextBusinessDay("2026-12-24")).toBe("2026-12-24"); // veille de Noël : jour ouvré
+    const ilevia = rule({ kind: "expense", amountCents: 3_000, accountId: "chk", startDate: "2025-01-25", trackingStart: "2025-01-01" });
+    const dec = listOccurrences(ilevia, "2025-12-01", "2025-12-31", "2026-01-10", realizationIndex([]));
+    expect(dec.map((o) => [o.date, o.dueDate])).toEqual([["2025-12-25", "2025-12-29"]]);
+
+    // Banque du compte fermée le lundi : le lundi 29 passe au mardi 30.
+    const secondaire = account("sec", "checking", 0, "2025-01-01", { closedWeekdays: [1] });
+    const closed = ruleClosedWeekdays({ ...ilevia, accountId: "sec" }, byId([secondaire]));
+    expect(closed).toEqual([1]);
+    const decSec = listOccurrences(ilevia, "2025-12-01", "2025-12-31", "2026-01-10", realizationIndex([]), closed);
+    expect(decSec.map((o) => o.dueDate)).toEqual(["2025-12-30"]);
+    expect(nextBusinessDay("2026-11-14", [1])).toBe("2026-11-17"); // samedi → mardi
+    expect(nextBusinessDay("2026-11-17", [1, 2, 3, 4, 5])).toBe("2026-11-17"); // garde-fou : jamais de boucle infinie
+  });
+
+  it("supprime une échéance et les suivantes, chemin de l'argent compris", () => {
+    const abo = rule({ kind: "expense", amountCents: 2_160, accountId: "chk", startDate: "2026-09-06", label: "Abonnement" });
+    const vir = rule({ kind: "transfer", amountCents: 2_160, accountId: "liv", toAccountId: "chk", startDate: "2026-09-05", fundedRuleId: abo.id });
+    const other = rule({ kind: "expense", amountCents: 500, accountId: "chk", startDate: "2026-09-01" });
+    const occ = (r: typeof abo, date: string) => expense(date, r.amountCents, "chk", { recurrenceId: r.id, occurrenceDate: date });
+    const txs = [occ(abo, "2026-10-06"), occ(abo, "2026-11-06"), occ(vir, "2026-10-05"), occ(vir, "2026-11-05"), occ(other, "2026-11-01")];
+    const [, aboNov, , virNov] = txs;
+
+    // Depuis l'échéance du 6 novembre : octobre reste, novembre et la suite disparaissent.
+    const plan = planStopFrom(abo, "2026-11-06", [abo, vir, other], txs);
+    expect(plan.transactionIds.sort()).toEqual([virNov.id, aboNov.id].sort());
+    expect(plan.endRules).toEqual([
+      { id: vir.id, endDate: "2026-11-04" },
+      { id: abo.id, endDate: "2026-11-05" },
+    ]);
+    expect(plan.deleteRuleIds).toEqual([]);
+
+    // Depuis la toute première échéance : plus rien ne reste, les règles sont supprimées (virement d'abord).
+    const all = planStopFrom(abo, "2026-09-06", [abo, vir, other], txs);
+    expect(all.deleteRuleIds).toEqual([vir.id, abo.id]);
+    expect(all.transactionIds).toHaveLength(4);
+    expect(all.endRules).toEqual([]);
   });
 
   it("calcule un équivalent mensuel", () => {

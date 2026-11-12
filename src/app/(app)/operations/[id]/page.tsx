@@ -129,15 +129,32 @@ async function Operation({ params }: { params: PageProps<"/operations/[id]">["pa
               <Icon name="plus" size={14} /> Dupliquer
             </Link>
           )}
-          {!(tx.recurrenceId && tx.status === "cancelled") && (
+          {tx.recurrenceId ? (
+            <>
+              <ActionButton
+                action={deleteTransactionAction}
+                fields={{ id: tx.id, scope: "following", return_to: "/operations" }}
+                confirm={`Supprimer cette échéance et toutes les suivantes de « ${rule?.label ?? tx.label} » ? La récurrence s'arrête (avec les virements de son chemin de l'argent) ; les échéances passées restent.`}
+                className="btn btn-danger btn-sm"
+              >
+                <Icon name="trash" size={14} /> Supprimer celle-ci et les suivantes
+              </ActionButton>
+              {tx.status !== "cancelled" && (
+                <ActionButton
+                  action={deleteTransactionAction}
+                  fields={{ id: tx.id, return_to: "/operations" }}
+                  confirm="Ignorer seulement cette échéance ? Elle ne sera pas réenregistrée ; les suivantes restent prévues."
+                  className="btn btn-sm"
+                >
+                  Ignorer seulement celle-ci
+                </ActionButton>
+              )}
+            </>
+          ) : (
             <ActionButton
               action={deleteTransactionAction}
               fields={{ id: tx.id, return_to: "/operations" }}
-              confirm={
-                tx.recurrenceId
-                  ? "Supprimer cette échéance ? Elle ne sera pas réenregistrée ; les échéances suivantes restent prévues."
-                  : "Supprimer définitivement cette opération ? Une copie est conservée dans le journal d'audit."
-              }
+              confirm="Supprimer définitivement cette opération ? Une copie est conservée dans le journal d'audit."
               className="btn btn-danger btn-sm"
             >
               <Icon name="trash" size={14} /> Supprimer

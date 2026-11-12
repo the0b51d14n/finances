@@ -39,7 +39,9 @@ describe("moteur de prévision", () => {
     expect(at(TODAY)).toBe(50_000);
     expect(at("2026-10-28")).toBe(200_000);
     expect(at("2026-11-05")).toBe(140_000);
-    expect(at("2026-11-28")).toBe(290_000);
+    // Salaire du samedi 28/11 reporté au lundi 30/11 (jour ouvré).
+    expect(at("2026-11-28")).toBe(140_000);
+    expect(at("2026-11-30")).toBe(290_000);
     expect(nextIncome(events([salary, rent]), "guaranteed", TODAY)?.date).toBe("2026-10-28");
   });
 
@@ -49,8 +51,9 @@ describe("moteur de prévision", () => {
     const fromLivret = rule({ kind: "expense", amountCents: 9_999, accountId: "liv", startDate: "2026-11-03", trackingStart: TODAY });
     const voucherMeal = tx("expense", "2026-11-04", 1_000, [["tr", -1_000]], { status: "planned", confirmedAt: null });
     const evts = events([toSavings, fromSavings, fromLivret], [voucherMeal]).filter((e) => e.date <= "2026-11-30");
+    // Le virement du dimanche 01/11 passe au lundi 02/11.
     expect(evts.map((e) => [e.date, e.deltaCents])).toEqual([
-      ["2026-11-01", -20_000],
+      ["2026-11-02", -20_000],
       ["2026-11-02", 5_000],
     ]);
   });

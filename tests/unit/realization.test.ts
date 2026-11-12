@@ -23,12 +23,14 @@ describe("réalisation automatique (aucune confirmation)", () => {
     const abonnement = rule({ kind: "expense", amountCents: 1_299, accountId: "courant", startDate: "2026-11-11", trackingStart: "2026-11-01" });
     const due = dueRealizations({ today, accounts: [checking], transactions: [], rules: [loyer, abonnement] });
 
-    // Loyer : 05/10 et 05/11 (le 05/09 est avant le début de suivi) ; abonnement : aujourd'hui.
+    // Loyer : 05/10 et 05/11 (le 05/09 est avant le début de suivi). Abonnement du
+    // 11/11 : jour férié (Armistice), reporté au 12/11, donc pas encore enregistré.
     expect(due.map((d) => (d.type === "occurrence" ? `${d.ruleId}@${d.date}` : d.type))).toEqual([
       `${loyer.id}@2026-10-05`,
       `${loyer.id}@2026-11-05`,
-      `${abonnement.id}@2026-11-11`,
     ]);
+    const nextDay = dueRealizations({ today: "2026-11-12", accounts: [checking], transactions: [], rules: [abonnement] });
+    expect(nextDay.map((d) => d.type === "occurrence" && [d.date, d.payload.date])).toEqual([["2026-11-11", "2026-11-12"]]);
     const first = due[0];
     expect(first.type === "occurrence" && first.payload).toMatchObject({
       kind: "expense",

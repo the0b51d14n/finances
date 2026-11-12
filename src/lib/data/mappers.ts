@@ -15,7 +15,7 @@ import type {
 } from "@/lib/domain/types";
 
 export const ACCOUNT_COLUMNS =
-  "id, name, type, subtype, currency, opening_balance_cents, opening_balance_date, valid_until, institution, notes, archived_at, created_at";
+  "id, name, type, subtype, currency, opening_balance_cents, opening_balance_date, valid_until, institution, notes, archived_at, created_at, closed_weekdays";
 export const CATEGORY_COLUMNS = "id, kind, name, system_key, color, sort_order, archived_at";
 /** Colonnes de public.transactions (alias t) ; les écritures sont jointes à part (voir load.ts). */
 export const TRANSACTION_COLUMNS =
@@ -52,6 +52,7 @@ export function toAccount(r: Row): Account {
     notes: strOrNull(r.notes),
     archivedAt: strOrNull(r.archived_at),
     createdAt: str(r.created_at),
+    closedWeekdays: Array.isArray(r.closed_weekdays) ? r.closed_weekdays.map(Number) : [],
   };
 }
 

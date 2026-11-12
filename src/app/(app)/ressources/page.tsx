@@ -6,7 +6,7 @@ import { Amount, Badge, EmptyState, PageHeader, PageSkeleton, StatTile } from "@
 import { addMonths, formatDate, maxDate, monthKeyOf, startOfMonth } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
 import { balancesAt } from "@/lib/domain/accounts";
-import { FREQUENCY_LABELS, OCCURRENCE_STATUS_LABELS, listOccurrences, nextOccurrence, realizationIndex } from "@/lib/domain/recurrence";
+import { FREQUENCY_LABELS, OCCURRENCE_STATUS_LABELS, listOccurrences, nextDueDate, realizationIndex, ruleClosedWeekdays } from "@/lib/domain/recurrence";
 import { formatCents } from "@/lib/money";
 import { CERTAINTY_LABELS } from "@/lib/view/labels";
 
@@ -76,11 +76,12 @@ async function Resources() {
         ) : (
           <div className="stack">
             {incomeRules.map((rule) => {
-              const occurrences = listOccurrences(rule, maxDate(rule.startDate, addMonths(today, -6)), addMonths(today, 2), today, index)
+              const closed = ruleClosedWeekdays(rule, accountsById);
+              const occurrences = listOccurrences(rule, maxDate(rule.startDate, addMonths(today, -6)), addMonths(today, 2), today, index, closed)
                 .filter((o) => o.status !== "untracked" && o.status !== "skipped")
                 .reverse()
                 .slice(0, 8);
-              const next = rule.isActive ? nextOccurrence(rule, today) : null;
+              const next = rule.isActive ? nextDueDate(rule, today, closed) : null;
               return (
                 <div key={rule.id} className="stack-sm" style={{ borderBottom: "1px solid var(--border-soft)", paddingBottom: 12 }}>
                   <div className="row-between">
@@ -112,7 +113,7 @@ async function Resources() {
                         <tbody>
                           {occurrences.map((o) => (
                             <tr key={o.date}>
-                              <td>{formatDate(o.date, "short")}</td>
+                              <td>{formatDate(o.dueDate, "short")}</td>
                               <td className="r num faint">{formatCents(o.transaction?.expectedAmountCents ?? rule.amountCents)}</td>
                               <td>{o.transaction && o.status === "realized" ? formatDate(o.transaction.date, "short") : "—"}</td>
                               <td className="r num">{o.transaction && o.status === "realized" ? formatCents(o.transaction.amountCents) : "—"}</td>

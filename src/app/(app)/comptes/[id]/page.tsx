@@ -154,6 +154,7 @@ async function AccountDetail({
               validUntil: account.validUntil ?? "",
               institution: account.institution ?? "",
               notes: account.notes ?? "",
+              closedWeekdays: account.closedWeekdays,
             }}
             institutions={[...new Set(data.accounts.map((a) => a.institution).filter((i): i is string => !!i))]}
           />

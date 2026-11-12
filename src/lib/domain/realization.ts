@@ -5,15 +5,15 @@
  *    devient effectuée, à sa date.
  *  - Une échéance récurrente dont la date est atteinte, suivie et pas encore
  *    enregistrée, est enregistrée comme opération effectuée, au montant de la
- *    règle et à la date de l'échéance. Le montant peut ensuite être corrigé en
- *    modifiant l'opération.
+ *    règle et à sa date effective (un week-end ou un jour férié passe au jour ouvré suivant).
+ *    Le montant peut ensuite être corrigé en modifiant l'opération.
  *
  * Fonction pure : elle liste ce qu'il faut enregistrer ; l'écriture est faite
  * par la couche de données (src/lib/data/load.ts) via les fonctions SQL.
  */
 import type { IsoDate } from "@/lib/dates";
 import { buildEntries, type EntryInput } from "./ledger";
-import { listOccurrences, realizationIndex } from "./recurrence";
+import { listOccurrences, realizationIndex, ruleClosedWeekdays } from "./recurrence";
 import type { Account, RecurringRule, Transaction } from "./types";
 
 export type DueRealization =
@@ -37,9 +37,9 @@ export function dueRealizations(input: {
   const index = realizationIndex(input.transactions);
   for (const rule of input.rules) {
     if (!rule.isActive) continue;
-    // Échéances suivies jusqu'à aujourd'hui inclus, sans opération liée.
-    const occurrences = listOccurrences(rule, rule.trackingStart, today, today, index).filter(
-      (o) => o.transaction === null && (o.status === "overdue" || o.status === "pending"),
+    // Échéances suivies dont la date effective (jour ouvré) est atteinte, sans opération liée.
+    const occurrences = listOccurrences(rule, rule.trackingStart, today, today, index, ruleClosedWeekdays(rule, accountsById)).filter(
+      (o) => o.transaction === null && (o.status === "overdue" || o.status === "pending") && o.dueDate <= today,
     );
     if (occurrences.length === 0) continue;
 
@@ -62,7 +62,7 @@ export function dueRealizations(input: {
         payload: {
           kind: rule.kind,
           status: "confirmed",
-          date: occ.date,
+          date: occ.dueDate,
           label: rule.label,
           amount_cents: rule.amountCents,
           expected_amount_cents: rule.amountCents,

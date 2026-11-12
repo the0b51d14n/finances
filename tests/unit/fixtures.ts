@@ -27,6 +27,7 @@ export function account(id: string, type: AccountType, openingCents = 0, opening
     notes: null,
     archivedAt: null,
     createdAt: "2026-01-01T00:00:00Z",
+    closedWeekdays: [],
     ...extra,
   };
 }
