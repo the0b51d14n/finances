@@ -9,9 +9,10 @@ import type { AccountOption } from "./options";
 type Step = { from_account_id: string; to_account_id: string; amount: string; date: string };
 
 /**
- * Chemin de l'argent d'une dépense ponctuelle : virements préalables (ex.
- * épargne → courant secondaire → courant principal), proposés par l'appli puis
- * modifiables. Envoyés avec la dépense dans le champ caché « path ».
+ * Chemin de l'argent d'une dépense : virements préalables (ex. épargne →
+ * courant secondaire → courant principal), proposés par l'appli puis
+ * modifiables. Envoyés avec la dépense dans le champ caché « path ». Si la
+ * dépense est récurrente, chaque virement se répète à chaque échéance.
  */
 export function MoneyPathEditor({
   accounts,
@@ -19,6 +20,7 @@ export function MoneyPathEditor({
   amount,
   date,
   today,
+  recurrence,
   error,
 }: {
   accounts: AccountOption[];
@@ -26,6 +28,8 @@ export function MoneyPathEditor({
   amount: string;
   date: string;
   today: string;
+  /** Libellé de la fréquence si la dépense est récurrente (« Mensuelle »…), sinon null. */
+  recurrence: string | null;
   error?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -128,6 +132,13 @@ export function MoneyPathEditor({
               {steps.map((s) => `${nameOf(s.from_account_id)} → ${nameOf(s.to_account_id)}`).join(", ")}, puis dépense de {amount || "…"} € depuis{" "}
               {payer?.name ?? "…"}
               {date ? ` le ${formatDate(date)}` : ""}.
+              {recurrence && (
+                <>
+                  {" "}
+                  <strong>Récurrence {recurrence.toLowerCase()} :</strong> ces virements se répètent à chaque échéance, avec le même montant et le même
+                  écart de jours avant la dépense.
+                </>
+              )}
             </p>
           )}
           {error && (

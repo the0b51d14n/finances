@@ -89,6 +89,7 @@ export function rule(partial: Partial<RecurringRule> & Pick<RecurringRule, "kind
     certainty: "certain",
     isActive: true,
     notes: null,
+    fundedRuleId: null,
     ...partial,
   };
 }

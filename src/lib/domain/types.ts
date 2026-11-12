@@ -101,6 +101,8 @@ export type RecurringRule = {
   certainty: Certainty;
   isActive: boolean;
   notes: string | null;
+  /** Virement du chemin de l'argent : la dépense récurrente qu'il alimente. */
+  fundedRuleId: string | null;
 };
 
 export type Budget = {

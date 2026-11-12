@@ -1,5 +1,7 @@
 /**
- * Chemin de l'argent pour une dépense ponctuelle.
+ * Chemin de l'argent d'une dépense (pour une dépense récurrente : calculé sur
+ * sa première échéance, puis répété à chaque échéance par des virements
+ * récurrents rattachés, voir saveTransactionAction).
  *
  * Organisation visée : un compte courant « principal » paie les dépenses
  * courantes ; un compte courant « secondaire » porte les prélèvements (loyer,
