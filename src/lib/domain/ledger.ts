@@ -17,6 +17,11 @@ export type EntryInput =
       /** Part payée en tickets-restaurant (0 si aucune). */
       voucherAccountId?: string | null;
       voucherCents?: Cents;
+      /**
+       * Autres moyens de paiement de la même dépense (carte cadeau, bon d'achat,
+       * espèces, tickets…). Le compte principal paie le reste.
+       */
+      otherPayments?: { accountId: string; amountCents: Cents }[];
     }
   | { kind: "income"; amountCents: Cents; accountId: string }
   | { kind: "transfer"; amountCents: Cents; fromAccountId: string; toAccountId: string }
@@ -43,28 +48,45 @@ export function buildEntries(input: EntryInput, accountsById: Map<string, Accoun
       if (!Number.isSafeInteger(voucherCents) || voucherCents < 0) {
         return { ok: false, error: "La part en tickets-restaurant est invalide." };
       }
-      if (voucherCents === 0) {
+      const others = input.otherPayments ?? [];
+      if (voucherCents === 0 && others.length === 0) {
         return { ok: true, entries: [{ accountId: input.accountId, amountCents: -input.amountCents }] };
       }
-      const voucher = requireAccount(input.voucherAccountId);
-      if (!voucher || voucher.type !== "meal_voucher") {
-        return { ok: false, error: "Choisissez un portefeuille de tickets-restaurant." };
-      }
-      if (voucherCents > input.amountCents) {
-        return { ok: false, error: "La part en tickets-restaurant dépasse le montant total." };
-      }
-      if (voucher.id === account.id) {
-        // Dépense entièrement payée depuis le portefeuille de tickets.
-        if (voucherCents !== input.amountCents) {
-          return { ok: false, error: "Le compte payeur et le portefeuille de tickets doivent être différents." };
+      // Parts payées par d'autres moyens que le compte principal.
+      const parts: Entry[] = [];
+      if (voucherCents > 0) {
+        const voucher = requireAccount(input.voucherAccountId);
+        if (!voucher || voucher.type !== "meal_voucher") {
+          return { ok: false, error: "Choisissez un portefeuille de tickets-restaurant." };
         }
-        return { ok: true, entries: [{ accountId: voucher.id, amountCents: -input.amountCents }] };
+        if (voucherCents > input.amountCents) {
+          return { ok: false, error: "La part en tickets-restaurant dépasse le montant total." };
+        }
+        if (voucher.id === account.id) {
+          // Dépense entièrement payée depuis le portefeuille de tickets.
+          if (voucherCents !== input.amountCents || others.length > 0) {
+            return { ok: false, error: "Le compte payeur et le portefeuille de tickets doivent être différents." };
+          }
+          return { ok: true, entries: [{ accountId: voucher.id, amountCents: -input.amountCents }] };
+        }
+        parts.push({ accountId: voucher.id, amountCents: -voucherCents });
       }
-      const entries: Entry[] = [];
-      const bankPart = input.amountCents - voucherCents;
-      if (bankPart > 0) entries.push({ accountId: account.id, amountCents: -bankPart });
-      entries.push({ accountId: voucher.id, amountCents: -voucherCents });
-      return { ok: true, entries };
+      for (const p of others) {
+        if (!requireAccount(p.accountId)) return { ok: false, error: "Moyen de paiement invalide." };
+        if (!Number.isSafeInteger(p.amountCents) || p.amountCents <= 0) {
+          return { ok: false, error: "Chaque moyen de paiement doit avoir un montant positif." };
+        }
+        if (p.accountId === account.id || parts.some((e) => e.accountId === p.accountId)) {
+          return { ok: false, error: "Chaque moyen de paiement ne peut apparaître qu'une fois (compte principal compris)." };
+        }
+        parts.push({ accountId: p.accountId, amountCents: -p.amountCents });
+      }
+      const otherTotal = parts.reduce((s, e) => s - e.amountCents, 0);
+      if (otherTotal > input.amountCents) {
+        return { ok: false, error: "Les autres moyens de paiement dépassent le montant total." };
+      }
+      const mainPart = input.amountCents - otherTotal;
+      return { ok: true, entries: [...(mainPart > 0 ? [{ accountId: account.id, amountCents: -mainPart }] : []), ...parts] };
     }
     case "transfer": {
       const from = requireAccount(input.fromAccountId);
@@ -98,6 +120,15 @@ export function adjustmentFor(currentCents: Cents, observedCents: Cents): { dire
   const delta = observedCents - currentCents;
   if (delta === 0) return null;
   return { direction: delta > 0 ? "increase" : "decrease", amountCents: Math.abs(delta) };
+}
+
+/** Moyens de paiement d'une dépense autres que le compte principal (tickets compris). */
+export function secondaryPayments(input: EntryInput | null): { accountId: string; amountCents: Cents }[] {
+  if (!input || input.kind !== "expense") return [];
+  const voucher = input.voucherAccountId && input.voucherCents && input.voucherAccountId !== input.accountId
+    ? [{ accountId: input.voucherAccountId, amountCents: input.voucherCents }]
+    : [];
+  return [...voucher, ...(input.otherPayments ?? [])];
 }
 
 /** Répartition d'une dépense entre la banque et les tickets-restaurant. */
@@ -196,14 +227,20 @@ export function entriesToInput(
       return entries[0] ? { kind, amountCents: tx.amountCents, accountId: entries[0].accountId } : null;
     case "expense": {
       const voucher = entries.find((e) => accountsById.get(e.accountId)?.type === "meal_voucher");
-      const other = entries.find((e) => e !== voucher);
-      if (!voucher) return other ? { kind, amountCents: tx.amountCents, accountId: other.accountId } : null;
+      const rest = entries.filter((e) => e !== voucher);
+      // Compte principal : de préférence un compte bancaire ou des espèces ; les
+      // autres moyens (carte cadeau, bon d'achat…) sont des paiements annexes.
+      const main = rest.find((e) => { const a = accountsById.get(e.accountId); return !!a && isTransferable(a.type); }) ?? rest[0];
+      const others = rest.filter((e) => e !== main).map((e) => ({ accountId: e.accountId, amountCents: -e.amountCents }));
+      const extra = others.length > 0 ? { otherPayments: others } : {};
+      if (!voucher) return main ? { kind, amountCents: tx.amountCents, accountId: main.accountId, ...extra } : null;
       return {
         kind,
         amountCents: tx.amountCents,
-        accountId: (other ?? voucher).accountId,
+        accountId: (main ?? voucher).accountId,
         voucherAccountId: voucher.accountId,
         voucherCents: -voucher.amountCents,
+        ...extra,
       };
     }
     case "transfer": {

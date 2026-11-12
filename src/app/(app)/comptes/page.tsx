@@ -6,7 +6,7 @@ import { Amount, EmptyState, PageHeader, PageSkeleton, StatTile } from "@/compon
 import { formatDate } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
 import { accountKindLabel } from "@/lib/domain/account-kinds";
-import { ACCOUNT_CLASS_LABELS, accountClass, balancesAt, totalsByClass } from "@/lib/domain/accounts";
+import { ACCOUNT_CLASS_LABELS, accountClass, balancesAt, isExhausted, totalsByClass } from "@/lib/domain/accounts";
 import type { Account, AccountClass } from "@/lib/domain/types";
 import { formatCents } from "@/lib/money";
 import styles from "./accounts.module.css";
@@ -33,7 +33,8 @@ async function Accounts({ searchParams }: { searchParams: Promise<Search> }) {
   const data = await loadFinanceData();
   const balances = balancesAt(data.accounts, data.transactions, data.today);
   const active = data.accounts.filter((a) => !a.archivedAt);
-  const archived = data.accounts.filter((a) => a.archivedAt);
+  // Carte cadeau, avoir ou bon d'achat épuisé : retiré pour de bon, n'apparaît plus.
+  const archived = data.accounts.filter((a) => a.archivedAt && !isExhausted(a, balances.get(a.id)));
   const totals = totalsByClass(active, balances);
   const plannedByAccount = new Map<string, number>();
   for (const tx of data.transactions) {

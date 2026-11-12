@@ -7,7 +7,7 @@ import { EmptyState, PageHeader, PageSkeleton } from "@/components/ui/primitives
 import { safeReturnTo } from "@/lib/actions/state";
 import { addDays } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
-import { entriesToInput, frequentOperations, type FrequentOperation } from "@/lib/domain/ledger";
+import { entriesToInput, frequentOperations, secondaryPayments, type FrequentOperation } from "@/lib/domain/ledger";
 import type { TransactionKind } from "@/lib/domain/types";
 import { centsToInput, formatCents, parseAmountToCents } from "@/lib/money";
 
@@ -107,8 +107,10 @@ async function NewOperation({ searchParams }: { searchParams: Promise<Search> })
             accountId: defaultAccount.id,
             toAccountId,
             categoryId,
-            voucherAccountId: copy?.kind === "expense" ? (copy.voucherAccountId ?? "") : "",
-            voucherAmount: copy?.kind === "expense" && copy.voucherCents ? centsToInput(copy.voucherCents) : "",
+            // Copie : seuls les moyens de paiement encore actifs (une carte cadeau épuisée est retirée).
+            payments: secondaryPayments(copy)
+              .filter((p) => active.some((a) => a.id === p.accountId))
+              .map((p) => ({ accountId: p.accountId, amount: centsToInput(p.amountCents) })),
             direction: copy?.kind === "adjustment" ? copy.direction : "increase",
             notes: source?.notes ?? "",
             isExceptional: source?.isExceptional ?? false,

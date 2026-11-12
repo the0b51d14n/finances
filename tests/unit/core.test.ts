@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { accountTypeRules, balancesAt, totalsByClass, typeChangeAllowed } from "@/lib/domain/accounts";
+import { accountTypeRules, balancesAt, depletedSingleUseAccounts, totalsByClass, typeChangeAllowed } from "@/lib/domain/accounts";
 import { budgetPeriodRange, evaluateBudget, spentInRange } from "@/lib/domain/budgets";
 import { goalAccumulated, goalProgress, overAllocatedAccounts } from "@/lib/domain/goals";
-import { adjustmentFor, buildEntries, entriesToInput, expenseSplit, frequentOperations, possibleDuplicates } from "@/lib/domain/ledger";
+import { adjustmentFor, buildEntries, entriesToInput, expenseSplit, frequentOperations, possibleDuplicates, secondaryPayments } from "@/lib/domain/ledger";
 import { easterSunday, nextBusinessDay } from "@/lib/dates";
 import { listOccurrences, monthlyEquivalentCents, nextDueDate, occurrenceDates, planStopFrom, realizationIndex, ruleClosedWeekdays } from "@/lib/domain/recurrence";
 import type { SavingsGoal } from "@/lib/domain/types";
@@ -32,6 +32,64 @@ describe("écritures d'une opération", () => {
     expect(buildEntries({ kind: "transfer", amountCents: 1_000, fromAccountId: "tr", toAccountId: "chk" }, accountsById).ok).toBe(false);
     expect(buildEntries({ kind: "income", amountCents: 0, accountId: "chk" }, accountsById).ok).toBe(false);
     expect(buildEntries({ kind: "income", amountCents: 1_000, accountId: "inconnu" }, accountsById).ok).toBe(false);
+  });
+
+  it("paie une dépense avec plusieurs moyens (carte cadeau, tickets, compte) et la reconstitue", () => {
+    const gift = account("gift", "earmarked", 5_000, "2026-01-01", { subtype: "gift_card" });
+    const ids = byId([...accounts, gift]);
+    const res = buildEntries(
+      { kind: "expense", amountCents: 8_000, accountId: "chk", voucherAccountId: "tr", voucherCents: 1_000, otherPayments: [{ accountId: "gift", amountCents: 5_000 }] },
+      ids,
+    );
+    expect(res).toEqual({
+      ok: true,
+      entries: [
+        { accountId: "chk", amountCents: -2_000 },
+        { accountId: "tr", amountCents: -1_000 },
+        { accountId: "gift", amountCents: -5_000 },
+      ],
+    });
+    // Entièrement payée par la carte cadeau : aucune écriture sur le compte principal.
+    expect(buildEntries({ kind: "expense", amountCents: 5_000, accountId: "chk", otherPayments: [{ accountId: "gift", amountCents: 5_000 }] }, ids)).toEqual({
+      ok: true,
+      entries: [{ accountId: "gift", amountCents: -5_000 }],
+    });
+    // Incohérences : dépassement, doublon, compte principal répété.
+    expect(buildEntries({ kind: "expense", amountCents: 1_000, accountId: "chk", otherPayments: [{ accountId: "gift", amountCents: 2_000 }] }, ids).ok).toBe(false);
+    expect(buildEntries({ kind: "expense", amountCents: 9_000, accountId: "chk", otherPayments: [{ accountId: "gift", amountCents: 1 }, { accountId: "gift", amountCents: 1 }] }, ids).ok).toBe(false);
+    expect(buildEntries({ kind: "expense", amountCents: 9_000, accountId: "chk", otherPayments: [{ accountId: "chk", amountCents: 1 }] }, ids).ok).toBe(false);
+
+    const saved = tx("expense", "2026-02-06", 8_000, [["gift", -5_000], ["chk", -2_000], ["tr", -1_000]]);
+    const input = entriesToInput(saved, ids);
+    expect(input).toEqual({
+      kind: "expense",
+      amountCents: 8_000,
+      accountId: "chk", // compte bancaire préféré comme compte principal
+      voucherAccountId: "tr",
+      voucherCents: 1_000,
+      otherPayments: [{ accountId: "gift", amountCents: 5_000 }],
+    });
+    expect(secondaryPayments(input)).toEqual([
+      { accountId: "tr", amountCents: 1_000 },
+      { accountId: "gift", amountCents: 5_000 },
+    ]);
+  });
+
+  it("retire une carte cadeau ou un bon d'achat épuisé, jamais un moyen rechargeable", () => {
+    const gift = account("gift", "earmarked", 5_000, "2026-01-01", { subtype: "gift_card" });
+    const avoir = account("avoir", "earmarked", 2_000, "2026-01-01", { subtype: "store_credit" });
+    const kitty = account("kitty", "other", 3_000, "2026-01-01", { subtype: "online_kitty" });
+    const cash = account("cash", "cash", 1_000, "2026-01-01", { subtype: "cash" });
+    const fresh = account("fresh", "earmarked", 0, "2026-01-01", { subtype: "gift_card" }); // créée à 0, jamais utilisée
+    const spent = [
+      expense("2026-02-01", 5_000, "gift"),
+      expense("2026-02-01", 1_500, "avoir"),
+      expense("2026-02-01", 3_000, "kitty"),
+      expense("2026-02-01", 1_000, "cash"),
+    ];
+    // Carte cadeau à 0 : retirée ; avoir à 5 € : gardé ; cagnotte et espèces à 0 : gardées (rechargeables).
+    expect(depletedSingleUseAccounts([gift, avoir, kitty, cash, fresh], spent, "2026-02-02")).toEqual(["gift"]);
+    expect(depletedSingleUseAccounts([{ ...gift, archivedAt: "2026-02-02T00:00:00Z" }], spent, "2026-02-02")).toEqual([]);
   });
 
   it("produit un transfert à somme nulle et des ajustements signés", () => {

@@ -9,6 +9,7 @@
  */
 import type { Cents } from "@/lib/money";
 import type { IsoDate } from "@/lib/dates";
+import { accountSubtype, type AccountSubtype } from "./account-kinds";
 import type { Account, AccountClass, AccountType, Transaction } from "./types";
 
 export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
@@ -124,6 +125,35 @@ export function balancesAt(accounts: Account[], transactions: Transaction[], asO
     }
   }
   return result;
+}
+
+/**
+ * Moyens de paiement à usage unique, qui ne se rechargent pas (carte cadeau,
+ * avoirs et bons d'achat). Les autres (espèces, cagnottes, cashback,
+ * tickets-restaurant…) restent même à zéro : ils peuvent être réalimentés.
+ */
+const SINGLE_USE_SUBTYPES: ReadonlySet<AccountSubtype> = new Set<AccountSubtype>(["gift_card", "store_credit"]);
+
+export function isSingleUse(account: Pick<Account, "type" | "subtype">): boolean {
+  return SINGLE_USE_SUBTYPES.has(accountSubtype(account));
+}
+
+/** Moyen de paiement à usage unique épuisé (solde nul ou négatif). */
+export function isExhausted(account: Pick<Account, "type" | "subtype">, balanceCents: Cents | undefined): boolean {
+  return isSingleUse(account) && balanceCents !== undefined && balanceCents <= 0;
+}
+
+/**
+ * Comptes à usage unique épuisés à retirer automatiquement (archivage : les
+ * dépenses payées avec restent dans l'historique et les analyses). Un compte
+ * créé à 0 € et encore jamais utilisé n'est pas concerné.
+ */
+export function depletedSingleUseAccounts(accounts: Account[], transactions: Transaction[], today: IsoDate): string[] {
+  const balances = balancesAt(accounts, transactions, today);
+  const used = new Set(transactions.filter((t) => t.status === "confirmed").flatMap((t) => t.entries.map((e) => e.accountId)));
+  return accounts
+    .filter((a) => !a.archivedAt && isExhausted(a, balances.get(a.id)) && (a.openingBalanceCents > 0 || used.has(a.id)))
+    .map((a) => a.id);
 }
 
 export type BalanceTotals = {

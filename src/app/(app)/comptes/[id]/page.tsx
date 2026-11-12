@@ -11,7 +11,7 @@ import { Badge, Notice, PageHeader, PageSkeleton, StatTile } from "@/components/
 import { formatDate } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
 import { accountKindLabel, accountSubtype } from "@/lib/domain/account-kinds";
-import { ACCOUNT_CLASS_LABELS, accountClass, balancesAt, countsInBalance, hasExpiry } from "@/lib/domain/accounts";
+import { ACCOUNT_CLASS_LABELS, accountClass, balancesAt, countsInBalance, hasExpiry, isExhausted } from "@/lib/domain/accounts";
 import { centsToInput, formatCents } from "@/lib/money";
 
 export const metadata: Metadata = { title: "Compte" };
@@ -57,6 +57,7 @@ async function AccountDetail({
   const credits = history.filter((tx) => tx.status === "confirmed").reduce((s, tx) => s + Math.max(0, tx.entries.find((e) => e.accountId === account.id)!.amountCents), 0);
   const debits = history.filter((tx) => tx.status === "confirmed").reduce((s, tx) => s + Math.min(0, tx.entries.find((e) => e.accountId === account.id)!.amountCents), 0);
   const isVoucher = account.type === "meal_voucher";
+  const exhausted = isExhausted(account, balance);
 
   return (
     <div className="stack">
@@ -74,8 +75,10 @@ async function AccountDetail({
       />
 
       {account.archivedAt && (
-        <Notice tone="info" title="Compte archivé">
-          Archivé le {formatDate(account.archivedAt.slice(0, 10))}. Son historique est conservé et reste pris en compte dans les analyses passées.
+        <Notice tone="info" title={exhausted ? "Épuisé" : "Compte archivé"}>
+          {exhausted
+            ? `Solde à 0 € le ${formatDate(account.archivedAt.slice(0, 10))} : ne se recharge pas, il a été retiré automatiquement. Les dépenses payées avec restent dans l'historique et les analyses.`
+            : `Archivé le ${formatDate(account.archivedAt.slice(0, 10))}. Son historique est conservé et reste pris en compte dans les analyses passées.`}
         </Notice>
       )}
       {beforeOpening.length > 0 && (
@@ -162,9 +165,11 @@ async function AccountDetail({
       </details>
 
       <section className="row">
-        <ActionButton action={archiveAccountAction} fields={{ id: account.id, archive: account.archivedAt ? "0" : "1" }} className="btn">
-          <Icon name="archive" size={16} /> {account.archivedAt ? "Réactiver le compte" : "Archiver le compte"}
-        </ActionButton>
+        {!(account.archivedAt && exhausted) && (
+          <ActionButton action={archiveAccountAction} fields={{ id: account.id, archive: account.archivedAt ? "0" : "1" }} className="btn">
+            <Icon name="archive" size={16} /> {account.archivedAt ? "Réactiver le compte" : "Archiver le compte"}
+          </ActionButton>
+        )}
         {related.length === 0 && (
           <ActionButton
             action={deleteAccountAction}

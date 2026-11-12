@@ -130,6 +130,26 @@ const pathField = z
   })
   .pipe(z.array(pathStep).max(10, "Chemin : 10 virements maximum."));
 
+const paymentPart = z.object({
+  account_id: uuid("Choisissez chaque moyen de paiement."),
+  amount_cents: z.number().int().positive("Chaque moyen de paiement doit avoir un montant positif.").max(100_000_000_000),
+});
+
+/** Autres moyens de paiement d'une dépense, transmis en JSON par le formulaire ; vide si absent. */
+const paymentsField = z
+  .string()
+  .optional()
+  .transform((value, ctx) => {
+    if (!value) return [];
+    try {
+      return JSON.parse(value) as unknown;
+    } catch {
+      ctx.addIssue({ code: "custom", message: "Moyens de paiement illisibles." });
+      return z.NEVER;
+    }
+  })
+  .pipe(z.array(paymentPart).max(10, "10 moyens de paiement maximum."));
+
 export const transactionSchema = z
   .object({
     id: optionalUuid,
@@ -155,6 +175,8 @@ export const transactionSchema = z
     purchase_plan_id: optionalUuid,
     /** Chemin de l'argent : virements préalables à la dépense (JSON), répétés si elle est récurrente. */
     path: pathField,
+    /** Autres moyens de paiement de la dépense (carte cadeau, bon d'achat, espèces, tickets…), en JSON. */
+    payments: paymentsField,
   })
   .superRefine((v, ctx) => {
     const issue = (path: string, message: string) => ctx.addIssue({ code: "custom", path: [path], message });
@@ -171,9 +193,19 @@ export const transactionSchema = z
     if (v.repeat !== "none") {
       if (v.kind === "adjustment") issue("repeat", "Un ajustement ne peut pas être récurrent.");
       if (v.voucher_amount > 0) issue("repeat", "Une opération récurrente ne peut pas être payée en tickets-restaurant.");
+      if (v.payments.length > 0) issue("repeat", "Une opération récurrente est payée par un seul compte : retirez les autres moyens de paiement.");
       if (v.recurrence_id) issue("repeat", "Cette opération est déjà liée à une récurrence.");
     }
     if (!!v.recurrence_id !== !!v.occurrence_date) issue("occurrence_date", "Échéance de récurrence incomplète.");
+    if (v.payments.length > 0) {
+      if (v.kind !== "expense") issue("payments", "Plusieurs moyens de paiement : seulement pour une dépense.");
+      const total = v.payments.reduce((s, p) => s + p.amount_cents, 0);
+      if (total > v.amount) issue("payments", "Les autres moyens de paiement dépassent le montant total.");
+      const ids = v.payments.map((p) => p.account_id);
+      if (new Set(ids).size !== ids.length || ids.includes(v.account_id)) {
+        issue("payments", "Chaque moyen de paiement ne peut apparaître qu'une fois (compte principal compris).");
+      }
+    }
     if (v.path.length > 0) {
       // Dépense récurrente : chaque virement du chemin devient un virement
       // récurrent de même fréquence, rattaché à la dépense.

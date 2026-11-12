@@ -10,7 +10,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Amount, Badge, Notice, PageHeader, PageSkeleton } from "@/components/ui/primitives";
 import { formatDate, formatDateTime } from "@/lib/dates";
 import { loadFinanceData, loadTransactionAudit } from "@/lib/data/load";
-import { entriesToInput, expenseSplit } from "@/lib/domain/ledger";
+import { entriesToInput, expenseSplit, secondaryPayments } from "@/lib/domain/ledger";
 import { centsToInput, formatCents } from "@/lib/money";
 import { KIND_LABELS, STATUS_LABELS } from "@/lib/view/labels";
 
@@ -182,8 +182,7 @@ async function Operation({ params }: { params: PageProps<"/operations/[id]">["pa
                 accountId: input.kind === "transfer" ? input.fromAccountId : input.accountId,
                 toAccountId: input.kind === "transfer" ? input.toAccountId : "",
                 categoryId: tx.categoryId ?? "",
-                voucherAccountId: input.kind === "expense" ? (input.voucherAccountId ?? "") : "",
-                voucherAmount: input.kind === "expense" && input.voucherCents ? centsToInput(input.voucherCents) : "",
+                payments: secondaryPayments(input).map((p) => ({ accountId: p.accountId, amount: centsToInput(p.amountCents) })),
                 direction: input.kind === "adjustment" ? input.direction : "increase",
                 notes: tx.notes ?? "",
                 isExceptional: tx.isExceptional,

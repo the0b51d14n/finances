@@ -8,6 +8,7 @@ import { FREQUENCY_LABELS } from "@/lib/domain/recurrence";
 import type { TransactionKind, TransactionStatus } from "@/lib/domain/types";
 import { transactionSchema } from "@/lib/validation/schemas";
 import { MoneyPathEditor } from "./MoneyPathEditor";
+import { PaymentsEditor, type PaymentRow } from "./PaymentsEditor";
 import type { AccountOption, CategoryOption } from "./options";
 
 export type TransactionFormValues = {
@@ -20,8 +21,8 @@ export type TransactionFormValues = {
   accountId: string;
   toAccountId: string;
   categoryId: string;
-  voucherAccountId: string;
-  voucherAmount: string;
+  /** Autres moyens de paiement d'une dépense (tickets, carte cadeau, bon d'achat…) ; le compte principal paie le reste. */
+  payments: PaymentRow[];
   direction: "increase" | "decrease";
   notes: string;
   isExceptional: boolean;
@@ -60,13 +61,11 @@ export function TransactionForm({
   const status: TransactionStatus = initial.status === "cancelled" ? "cancelled" : date > today ? "planned" : "confirmed";
   const [accountId, setAccountId] = useState(initial.accountId);
   const [repeat, setRepeat] = useState("none");
-  const [useVouchers, setUseVouchers] = useState(Number(initial.voucherAmount.replace(",", ".")) > 0);
 
   const editing = !!initial.id;
-  const usable = (a: AccountOption) => !a.archived || a.id === initial.accountId || a.id === initial.toAccountId || a.id === initial.voucherAccountId;
-  const voucherAccounts = accounts.filter((a) => a.type === "meal_voucher" && usable(a));
+  const usable = (a: AccountOption) =>
+    !a.archived || a.id === initial.accountId || a.id === initial.toAccountId || initial.payments.some((p) => p.accountId === a.id);
   const sourceAccounts = accounts.filter((a) => usable(a) && (kind !== "transfer" || isTransferable(a.type)));
-  const selectedAccount = accounts.find((a) => a.id === accountId);
   const kindCategories = categories.filter((c) => c.kind === kind && (!c.archived || c.id === initial.categoryId));
   const err = (name: string) => errors[name];
 
@@ -188,29 +187,14 @@ export function TransactionForm({
         )}
       </div>
 
-      {kind === "expense" && voucherAccounts.length > 0 && selectedAccount?.type !== "meal_voucher" && (
-        <div className="card stack-sm" style={{ background: "var(--bg-elev)" }}>
-          <label className="checkbox">
-            <input type="checkbox" checked={useVouchers} onChange={(e) => setUseVouchers(e.target.checked)} />
-            Payée en partie avec des tickets-restaurant
-          </label>
-          {useVouchers && (
-            <div className="form-grid">
-              <Field id="voucher_account_id" label="Portefeuille de tickets" error={err("voucher_account_id")}>
-                <select id="voucher_account_id" name="voucher_account_id" className="select" defaultValue={initial.voucherAccountId || voucherAccounts[0]?.id}>
-                  {voucherAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field id="voucher_amount" label="Part payée en tickets (€)" error={err("voucher_amount")} hint="Le reste est débité du compte choisi.">
-                <input id="voucher_amount" name="voucher_amount" className="input" inputMode="decimal" defaultValue={initial.voucherAmount} placeholder="0,00" />
-              </Field>
-            </div>
-          )}
-        </div>
+      {kind === "expense" && repeat === "none" && !initial.recurrenceId && (
+        <PaymentsEditor
+          accounts={sourceAccounts}
+          mainAccountId={accountId}
+          amount={amount}
+          initial={initial.payments}
+          error={err("payments") ?? err("voucher_amount")}
+        />
       )}
 
       {kind === "expense" && !editing && !initial.recurrenceId && (

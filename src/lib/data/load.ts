@@ -12,8 +12,9 @@ import type {
   UserSettings,
 } from "@/lib/domain/types";
 import { todayParis } from "@/lib/dates";
-import { sql } from "@/lib/db/sql";
+import { sql, updateWhere } from "@/lib/db/sql";
 import type { DbError, UserDb } from "@/lib/db/user-db";
+import { depletedSingleUseAccounts } from "@/lib/domain/accounts";
 import { dueRealizations, type DueRealization } from "@/lib/domain/realization";
 import { toAccount, toAllocation, toBudget, toCategory, toGoal, toPurchasePlan, toRule, toSettings, toTransaction } from "./mappers";
 import { DATA_QUERIES } from "./queries";
@@ -82,6 +83,16 @@ export const loadFinanceData = cache(async (): Promise<FinanceData> => {
     res = await db.batch(DATA_QUERIES);
     if (res.error) throw loadError(res.error, "données");
     data = toFinanceData(res.data, today, email);
+  }
+
+  // Carte cadeau, avoir ou bon d'achat épuisé : retiré automatiquement (archivé,
+  // les dépenses payées avec restent dans l'historique). Non rechargeable.
+  const depleted = depletedSingleUseAccounts(data.accounts, data.transactions, today);
+  if (depleted.length > 0) {
+    const archivedAt = new Date().toISOString();
+    const { error } = await db.execAll(depleted.map((id) => updateWhere("accounts", { archived_at: archivedAt }, "id", id)));
+    if (error) console.error(`[données] retrait des moyens de paiement épuisés : échec (${error.code ?? "?"})`);
+    else data = { ...data, accounts: data.accounts.map((a) => (depleted.includes(a.id) ? { ...a, archivedAt } : a)) };
   }
   return data;
 });

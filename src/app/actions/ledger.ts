@@ -17,7 +17,7 @@ import { adjustmentFor, buildEntries, type EntryInput } from "@/lib/domain/ledge
 import { proposeMoneyPath } from "@/lib/domain/money-path";
 import { nextOccurrence, planStopFrom } from "@/lib/domain/recurrence";
 import type { Account, Entry } from "@/lib/domain/types";
-import { centsToInput, parseAmountToCents } from "@/lib/money";
+import { centsToInput, formatCents, parseAmountToCents } from "@/lib/money";
 import {
   accountSchema,
   balanceAdjustmentSchema,
@@ -72,6 +72,7 @@ export async function saveTransactionAction(_prev: ActionState, formData: FormDa
         accountId: v.account_id,
         voucherAccountId: v.voucher_account_id,
         voucherCents: v.voucher_amount,
+        otherPayments: v.payments.map((p) => ({ accountId: p.account_id, amountCents: p.amount_cents })),
       };
       break;
     case "income":
@@ -86,6 +87,30 @@ export async function saveTransactionAction(_prev: ActionState, formData: FormDa
   }
   const built = buildEntries(entryInput, accounts);
   if (!built.ok) return failure(built.error);
+
+  // Carte cadeau, bon d'achat, tickets-restaurant : jamais plus que leur solde
+  // (nouvelle dépense ; une modification reprend une part déjà comptée).
+  if (v.kind === "expense" && !v.id) {
+    const limited = built.entries.filter((e) => {
+      const a = accounts.get(e.accountId);
+      return a && hasExpiry(a.type);
+    });
+    if (limited.length > 0) {
+      const ids = limited.map((e) => e.accountId);
+      const { data: rows } = await db.rows<{ account_id: string; balance_cents: number }>(
+        sql`select account_id, balance_cents from public.account_balances where account_id in (select (jsonb_array_elements_text(${ids}::jsonb))::uuid)`,
+      );
+      for (const e of limited) {
+        const available = Number(rows?.find((r) => r.account_id === e.accountId)?.balance_cents ?? 0);
+        if (-e.amountCents > available) {
+          const name = accounts.get(e.accountId)!.name;
+          return failure(INVALID, {
+            [e.accountId === v.account_id ? "account_id" : "payments"]: `${name} n'a que ${formatCents(Math.max(0, available))} : réduisez sa part ou ajoutez un autre moyen de paiement.`,
+          });
+        }
+      }
+    }
+  }
 
   const categoryId = v.kind === "expense" || v.kind === "income" ? v.category_id : null;
   if (categoryId) {
