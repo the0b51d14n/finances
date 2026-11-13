@@ -73,13 +73,74 @@ export const salarySchema = z.object({
   client_request_id: optionalUuid,
 });
 
-/** Dépense rapide : montant, domaine et compte qui paie, datée d'aujourd'hui. */
-export const expenseSchema = z.object({
-  amount,
-  category_id: uuid("Choisissez un domaine."),
-  account_id: uuid("Choisissez un compte."),
-  client_request_id: optionalUuid,
-});
+/**
+ * Quand : une fois (à une date), ou répété. Chaque semaine → jour de la
+ * semaine (1 = lundi … 7 = dimanche) ; chaque mois → numéro du jour (1 à 31) ;
+ * chaque année → date de la première échéance.
+ */
+const scheduleFields = {
+  repeat: z.enum(["none", "weekly", "monthly", "annual"], { error: "Choisissez quand." }).default("none"),
+  date: optionalDate,
+  weekday: z.string().optional(),
+  day: z.string().optional(),
+};
+
+type ScheduleInput = { repeat: "none" | "weekly" | "monthly" | "annual"; date: string | null; weekday?: string; day?: string };
+
+function checkSchedule(v: ScheduleInput, ctx: z.RefinementCtx) {
+  const issue = (path: string, message: string) => ctx.addIssue({ code: "custom", path: [path], message });
+  if ((v.repeat === "none" || v.repeat === "annual") && !v.date) issue("date", "Choisissez la date.");
+  if (v.repeat === "weekly" && !/^[1-7]$/.test(v.weekday ?? "")) issue("weekday", "Choisissez le jour de la semaine.");
+  if (v.repeat === "monthly") {
+    const day = Number(v.day);
+    if (!Number.isInteger(day) || day < 1 || day > 31) issue("day", "Jour du mois : un nombre de 1 à 31.");
+  }
+}
+
+/** Échéancier validé : prêt pour firstDate (src/lib/domain/recurrence.ts). */
+function toSchedule(v: ScheduleInput) {
+  switch (v.repeat) {
+    case "weekly":
+      return { repeat: "weekly", weekday: Number(v.weekday) } as const;
+    case "monthly":
+      return { repeat: "monthly", day: Number(v.day) } as const;
+    case "annual":
+      return { repeat: "annual", date: v.date! } as const;
+    default:
+      return { repeat: "none", date: v.date! } as const;
+  }
+}
+
+/** Dépense : nom (facultatif : le domaine sinon), montant, domaine, compte qui paie et quand. */
+export const expenseSchema = z
+  .object({
+    label: optionalText(140),
+    amount,
+    category_id: uuid("Choisissez un domaine."),
+    account_id: uuid("Choisissez un compte."),
+    client_request_id: optionalUuid,
+    ...scheduleFields,
+  })
+  .superRefine(checkSchedule)
+  .transform((v) => ({ ...v, schedule: toSchedule(v) }));
+
+/** Virement entre deux comptes, ponctuel ou récurrent. */
+export const transferSchema = z
+  .object({
+    amount,
+    from_account_id: uuid("Choisissez le compte de départ."),
+    to_account_id: uuid("Choisissez le compte d'arrivée."),
+    label: optionalText(140),
+    client_request_id: optionalUuid,
+    ...scheduleFields,
+  })
+  .superRefine((v, ctx) => {
+    if (v.from_account_id === v.to_account_id) {
+      ctx.addIssue({ code: "custom", path: ["to_account_id"], message: "Choisissez deux comptes différents." });
+    }
+    checkSchedule(v, ctx);
+  })
+  .transform((v) => ({ ...v, schedule: toSchedule(v) }));
 
 // -----------------------------------------------------------------------------
 // Comptes

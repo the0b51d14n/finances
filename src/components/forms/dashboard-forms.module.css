@@ -5,16 +5,10 @@
   gap: 8px;
 }
 
-/* Dépense rapide : montant, domaine, compte, bouton ; empilés sur mobile. */
-.expense {
+/* Champs d'une dépense ou d'un virement : en ligne sur ordinateur, empilés sur mobile. */
+.grid {
   display: grid;
-  grid-template-columns: minmax(90px, 0.8fr) minmax(0, 1.4fr) minmax(0, 1.2fr) auto;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
   gap: 10px;
   align-items: end;
-}
-
-@media (max-width: 640px) {
-  .expense {
-    grid-template-columns: 1fr;
-  }
 }

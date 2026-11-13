@@ -1,5 +1,5 @@
 import { raw, sql } from "@/lib/db/sql";
-import { ACCOUNT_COLUMNS, CATEGORY_COLUMNS, SETTINGS_COLUMNS, TRANSACTION_COLUMNS } from "./mappers";
+import { ACCOUNT_COLUMNS, CATEGORY_COLUMNS, RULE_COLUMNS, SETTINGS_COLUMNS, TRANSACTION_COLUMNS } from "./mappers";
 
 /** Opérations avec leurs écritures, agrégées en une passe (pas de requête par opération). */
 const TRANSACTIONS_QUERY = sql`
@@ -15,11 +15,12 @@ const TRANSACTIONS_QUERY = sql`
 
 /**
  * Lectures de loadFinanceData, exécutées ensemble dans une seule transaction
- * (un aller-retour). Ordre : paramètres, comptes, catégories, opérations.
+ * (un aller-retour). Ordre : paramètres, comptes, catégories, opérations, récurrences.
  */
 export const DATA_QUERIES = [
   sql`select ${raw(SETTINGS_COLUMNS)} from public.user_settings`,
   sql`select ${raw(ACCOUNT_COLUMNS)} from public.accounts order by created_at, id`,
   sql`select ${raw(CATEGORY_COLUMNS)} from public.categories order by kind, sort_order, name`,
   TRANSACTIONS_QUERY,
+  sql`select ${raw(RULE_COLUMNS)} from public.recurring_rules order by start_date, id`,
 ];

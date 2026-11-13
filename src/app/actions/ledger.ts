@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { failure, success, type ActionState } from "@/lib/actions/state";
-import { todayParis } from "@/lib/dates";
+import { formatDate, todayParis } from "@/lib/dates";
 import { dbErrorMessage } from "@/lib/data/errors";
 import { ACCOUNT_COLUMNS, CATEGORY_COLUMNS, toAccount, toCategory } from "@/lib/data/mappers";
 import { getSession } from "@/lib/data/session";
@@ -12,9 +12,18 @@ import type { UserDb } from "@/lib/db/user-db";
 import { hasExpiry, typeChangeAllowed } from "@/lib/domain/accounts";
 import { SALARIES, salaryAccount, salaryCategory } from "@/lib/domain/dashboard";
 import { adjustmentFor, buildEntries } from "@/lib/domain/ledger";
+import { firstDate, type Schedule } from "@/lib/domain/recurrence";
 import type { Account, Entry } from "@/lib/domain/types";
 import { formatCents } from "@/lib/money";
-import { accountSchema, balanceAdjustmentSchema, expenseSchema, fieldErrorsOf, formValues, salarySchema } from "@/lib/validation/schemas";
+import {
+  accountSchema,
+  balanceAdjustmentSchema,
+  expenseSchema,
+  fieldErrorsOf,
+  formValues,
+  salarySchema,
+  transferSchema,
+} from "@/lib/validation/schemas";
 
 const INVALID = "Vérifiez les champs signalés.";
 
@@ -71,7 +80,136 @@ export async function addSalaryAction(_prev: ActionState, formData: FormData): P
   return success(`${formatCents(v.amount)} ajoutés sur ${account.name}.`);
 }
 
-/** Dépense rapide : montant, domaine et compte, datée d'aujourd'hui. */
+const WEEKDAYS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
+const FREQUENCY: Record<Exclude<Schedule["repeat"], "none">, string> = { weekly: "weekly", monthly: "monthly", annual: "annual" };
+
+/** Résumé lisible de l'échéancier, pour le message de confirmation. */
+function scheduleText(schedule: Schedule, start: string): string {
+  switch (schedule.repeat) {
+    case "none":
+      return `le ${formatDate(start)}`;
+    case "weekly":
+      return `chaque ${WEEKDAYS[schedule.weekday - 1]}`;
+    case "monthly":
+      return `chaque mois le ${schedule.day}`;
+    case "annual":
+      return `chaque année, dès le ${formatDate(start)}`;
+  }
+}
+
+/**
+ * Enregistre une dépense ou un virement : une fois (effectué si la date est
+ * atteinte, sinon à venir), ou comme règle récurrente dont chaque échéance
+ * s'enregistre seule à sa date (voir src/lib/domain/recurrence.ts).
+ */
+async function saveScheduled(
+  db: UserDb,
+  op: {
+    kind: "expense" | "transfer";
+    label: string;
+    amountCents: number;
+    accountId: string;
+    toAccountId: string | null;
+    categoryId: string | null;
+    entries: Entry[];
+    schedule: Schedule;
+    requestId: string | null;
+  },
+): Promise<{ error: string | null; start: string }> {
+  const today = todayParis();
+  const start = firstDate(op.schedule, today);
+  if (op.schedule.repeat === "none") {
+    const { error } = await saveTransaction(db, {
+      client_request_id: op.requestId,
+      kind: op.kind,
+      status: start > today ? "planned" : "confirmed",
+      date: start,
+      label: op.label,
+      amount_cents: op.amountCents,
+      category_id: op.categoryId,
+      entries: entriesPayload(op.entries),
+    });
+    return { error: error ? dbErrorMessage(error) : null, start };
+  }
+  const { error } = await db.exec(
+    insertInto("recurring_rules", {
+      kind: op.kind,
+      label: op.label,
+      amount_cents: op.amountCents,
+      account_id: op.accountId,
+      to_account_id: op.toAccountId,
+      category_id: op.categoryId,
+      frequency: FREQUENCY[op.schedule.repeat],
+      start_date: start,
+      tracking_start: start,
+    }),
+  );
+  return { error: error ? dbErrorMessage(error) : null, start };
+}
+
+/** Virement entre deux comptes, une fois ou récurrent. */
+export async function addTransferAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = transferSchema.safeParse(formValues(formData));
+  if (!parsed.success) return failure(INVALID, fieldErrorsOf(parsed.error));
+  const v = parsed.data;
+  const { db } = await getSession();
+
+  const accounts = await accountsMap(db);
+  if (!accounts) return failure("Impossible de vérifier vos comptes. Réessayez.");
+  const from = accounts.get(v.from_account_id);
+  const to = accounts.get(v.to_account_id);
+  if (!from || from.archivedAt) return failure(INVALID, { from_account_id: "Compte invalide." });
+  if (!to || to.archivedAt) return failure(INVALID, { to_account_id: "Compte invalide." });
+
+  const built = buildEntries({ kind: "transfer", amountCents: v.amount, fromAccountId: from.id, toAccountId: to.id }, accounts);
+  if (!built.ok) return failure(built.error);
+
+  const saved = await saveScheduled(db, {
+    kind: "transfer",
+    label: v.label ?? `Virement vers ${to.name}`,
+    amountCents: v.amount,
+    accountId: from.id,
+    toAccountId: to.id,
+    categoryId: null,
+    entries: built.entries,
+    schedule: v.schedule,
+    requestId: v.client_request_id,
+  });
+  if (saved.error) return failure(saved.error);
+  refreshAll();
+  return success(`Virement de ${formatCents(v.amount)} enregistré ${scheduleText(v.schedule, saved.start)}.`);
+}
+
+/**
+ * Supprime une opération. Une échéance récurrente est marquée annulée plutôt
+ * qu'effacée : sinon elle serait recréée automatiquement au chargement suivant.
+ */
+export async function deleteTransactionAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const id = String(formData.get("id") ?? "");
+  const { db } = await getSession();
+  const { data: existing } = await db.row<{ recurrence_id: string | null }>(sql`select recurrence_id from public.transactions where id = ${id}`);
+  if (!existing) return failure("Opération introuvable.");
+  const { error } = await db.exec(
+    existing.recurrence_id
+      ? sql`select public.set_transaction_status(${id}::uuid, 'cancelled', null)`
+      : sql`select public.delete_transaction(${id}::uuid)`,
+  );
+  if (error) return failure(dbErrorMessage(error));
+  refreshAll();
+  return success("Supprimé.");
+}
+
+/** Arrête une récurrence : plus aucune échéance ; celles déjà passées restent enregistrées. */
+export async function deleteRuleAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const id = String(formData.get("id") ?? "");
+  const { db } = await getSession();
+  const { error } = await db.exec(sql`select public.delete_recurring_rule(${id}::uuid)`);
+  if (error) return failure(dbErrorMessage(error));
+  refreshAll();
+  return success("Récurrence arrêtée.");
+}
+
+/** Dépense : nom, montant, domaine, compte, et quand (une fois ou récurrente). */
 export async function addExpenseAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = expenseSchema.safeParse(formValues(formData));
   if (!parsed.success) return failure(INVALID, fieldErrorsOf(parsed.error));
@@ -100,19 +238,20 @@ export async function addExpenseAction(_prev: ActionState, formData: FormData): 
   const built = buildEntries({ kind: "expense", amountCents: v.amount, accountId: account.id }, accounts);
   if (!built.ok) return failure(built.error);
 
-  const { error } = await saveTransaction(db, {
-    client_request_id: v.client_request_id,
+  const saved = await saveScheduled(db, {
     kind: "expense",
-    status: "confirmed",
-    date: todayParis(),
-    label: String(category.name),
-    amount_cents: v.amount,
-    category_id: v.category_id,
-    entries: entriesPayload(built.entries),
+    label: v.label ?? String(category.name),
+    amountCents: v.amount,
+    accountId: account.id,
+    toAccountId: null,
+    categoryId: v.category_id,
+    entries: built.entries,
+    schedule: v.schedule,
+    requestId: v.client_request_id,
   });
-  if (error) return failure(dbErrorMessage(error));
+  if (saved.error) return failure(saved.error);
   refreshAll();
-  return success(`Dépense de ${formatCents(v.amount)} enregistrée.`);
+  return success(`Dépense de ${formatCents(v.amount)} enregistrée ${scheduleText(v.schedule, saved.start)}.`);
 }
 
 // -----------------------------------------------------------------------------

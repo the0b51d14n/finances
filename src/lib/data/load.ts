@@ -1,11 +1,12 @@
 import "server-only";
 import { cache } from "react";
-import type { Account, Category, Transaction, UserSettings } from "@/lib/domain/types";
+import type { Account, Category, RecurringRule, Transaction, UserSettings } from "@/lib/domain/types";
 import { todayParis } from "@/lib/dates";
 import { sql, updateWhere } from "@/lib/db/sql";
-import type { DbError } from "@/lib/db/user-db";
+import type { DbError, UserDb } from "@/lib/db/user-db";
 import { depletedSingleUseAccounts } from "@/lib/domain/accounts";
-import { toAccount, toCategory, toSettings, toTransaction } from "./mappers";
+import { dueRealizations, type DueRealization } from "@/lib/domain/recurrence";
+import { toAccount, toCategory, toRule, toSettings, toTransaction } from "./mappers";
 import { DATA_QUERIES } from "./queries";
 import { getSession } from "./session";
 
@@ -33,6 +34,7 @@ export type FinanceData = {
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
+  rules: RecurringRule[];
 };
 
 /**
@@ -59,6 +61,16 @@ export const loadFinanceData = cache(async (): Promise<FinanceData> => {
   const today = todayParis();
   let data = toFinanceData(res.data, today, email);
 
+  // Aucune confirmation : ce qui est échu (opérations à venir, échéances des
+  // dépenses et virements récurrents) est enregistré comme effectué, puis relu.
+  const due = dueRealizations(data);
+  if (due.length > 0) {
+    await realize(db, due);
+    res = await db.batch(DATA_QUERIES);
+    if (res.error) throw loadError(res.error, "données");
+    data = toFinanceData(res.data, today, email);
+  }
+
   // Carte cadeau, avoir ou bon d'achat épuisé : retiré automatiquement (archivé,
   // les dépenses payées avec restent dans l'historique). Non rechargeable.
   const depleted = depletedSingleUseAccounts(data.accounts, data.transactions, today);
@@ -72,7 +84,7 @@ export const loadFinanceData = cache(async (): Promise<FinanceData> => {
 });
 
 function toFinanceData(rows: Record<string, unknown>[][], today: string, email: string | null): FinanceData {
-  const [[settings], accounts, categories, transactions] = rows;
+  const [[settings], accounts, categories, transactions, rules] = rows;
   return {
     today,
     email,
@@ -80,5 +92,27 @@ function toFinanceData(rows: Record<string, unknown>[][], today: string, email: 
     accounts: accounts.map(toAccount),
     categories: categories.map(toCategory),
     transactions: transactions.map(toTransaction),
+    rules: rules.map(toRule),
   };
+}
+
+const realizationQuery = (d: DueRealization) =>
+  d.type === "confirm"
+    ? sql`select public.set_transaction_status(${d.transactionId}::uuid, 'confirmed', null)`
+    : sql`select public.save_transaction(${d.payload}::jsonb)`;
+
+/**
+ * Enregistre les éléments échus en une transaction. En cas d'échec (par
+ * exemple une échéance déjà enregistrée par une requête simultanée), chaque
+ * élément est retenté seul : un élément en erreur ne bloque pas les autres.
+ */
+async function realize(db: UserDb, due: DueRealization[]): Promise<void> {
+  const all = await db.execAll(due.map(realizationQuery));
+  if (!all.error) return;
+  let failed = 0;
+  for (const d of due) {
+    const one = await db.exec(realizationQuery(d));
+    if (one.error) failed++;
+  }
+  if (failed > 0) console.error(`[données] enregistrement automatique : ${failed} élément(s) non enregistré(s)`);
 }

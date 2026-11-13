@@ -6,8 +6,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Amount, EmptyState, PageHeader, PageSkeleton } from "@/components/ui/primitives";
 import { formatDate, formatMonth } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
-import { accountClass } from "@/lib/domain/accounts";
-import { SALARIES, computeDashboard, defaultExpenseAccount, salaryAccount } from "@/lib/domain/dashboard";
+import { SALARIES, computeDashboard, expenseFormOptions, salaryAccount } from "@/lib/domain/dashboard";
 import styles from "./dashboard.module.css";
 
 export default function DashboardPage() {
@@ -44,12 +43,7 @@ async function Dashboard() {
   const d = computeDashboard(data);
   const categoryName = new Map(data.categories.map((c) => [c.id, c.name]));
   const expenseRows = d.expenses.map((e) => ({ key: e.categoryId || "none", label: categoryName.get(e.categoryId) ?? "Sans domaine", cents: e.cents }));
-  const expenseCategories = data.categories.filter((c) => c.kind === "expense" && !c.archivedAt).map((c) => ({ id: c.id, name: c.name }));
-  // Comptes qui peuvent payer une dépense (ni dette ni placement).
-  const payers = accounts.filter((a) => !["debt", "investment"].includes(accountClass(a.type))).map((a) => ({ id: a.id, name: a.name }));
   const salaryTarget = salaryAccount(accounts);
-  const preferred = defaultExpenseAccount(accounts);
-  const defaultPayer = payers.find((p) => p.id === preferred?.id) ?? payers[0];
 
   return (
     <div className="stack">
@@ -92,7 +86,7 @@ async function Dashboard() {
           </span>
         </div>
         {expenseRows.length > 0 && <BarList rows={expenseRows} total={d.expenseTotalCents} ariaLabel="Dépenses du mois par domaine" />}
-        <ExpenseForm categories={expenseCategories} accounts={payers} defaultAccountId={defaultPayer?.id ?? ""} />
+        <ExpenseForm {...expenseFormOptions(data.accounts, data.categories)} today={data.today} />
       </section>
     </div>
   );

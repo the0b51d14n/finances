@@ -2,7 +2,7 @@
  * Conversion des lignes SQL (snake_case) en types métier (camelCase).
  * Les colonnes sélectionnées sont centralisées ici pour rester cohérentes.
  */
-import type { Account, Category, Transaction, UserSettings } from "@/lib/domain/types";
+import type { Account, Category, RecurringRule, Transaction, UserSettings } from "@/lib/domain/types";
 
 export const ACCOUNT_COLUMNS =
   "id, name, type, subtype, currency, opening_balance_cents, opening_balance_date, valid_until, institution, notes, archived_at, created_at, closed_weekdays";
@@ -10,6 +10,8 @@ export const CATEGORY_COLUMNS = "id, kind, name, system_key, color, sort_order, 
 /** Colonnes de public.transactions (alias t) ; les écritures sont jointes à part (voir load.ts). */
 export const TRANSACTION_COLUMNS =
   "t.id, t.kind, t.status, t.date, t.label, t.notes, t.amount_cents, t.expected_amount_cents, t.category_id, t.recurrence_id, t.occurrence_date, t.is_exceptional, t.created_at, t.updated_at, t.confirmed_at";
+export const RULE_COLUMNS =
+  "id, kind, label, amount_cents, account_id, to_account_id, category_id, frequency, start_date, end_date, tracking_start, is_active";
 export const SETTINGS_COLUMNS = "theme";
 
 type Row = Record<string, unknown>;
@@ -68,6 +70,23 @@ export function toTransaction(r: Row): Transaction {
     updatedAt: str(r.updated_at),
     confirmedAt: strOrNull(r.confirmed_at),
     entries: entries.map((e) => ({ accountId: str(e.account_id), amountCents: num(e.amount_cents) })),
+  };
+}
+
+export function toRule(r: Row): RecurringRule {
+  return {
+    id: str(r.id),
+    kind: r.kind as RecurringRule["kind"],
+    label: str(r.label),
+    amountCents: num(r.amount_cents),
+    accountId: str(r.account_id),
+    toAccountId: strOrNull(r.to_account_id),
+    categoryId: strOrNull(r.category_id),
+    frequency: r.frequency as RecurringRule["frequency"],
+    startDate: str(r.start_date),
+    endDate: strOrNull(r.end_date),
+    trackingStart: str(r.tracking_start),
+    isActive: Boolean(r.is_active),
   };
 }
 

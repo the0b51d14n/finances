@@ -4,8 +4,11 @@ Application web personnelle de suivi des comptes, volontairement simple :
 
 - **Tableau de bord** : total possédé, épargne (livrets), salaires reçus
   (alternance et Auchan, crédités sur le compte courant secondaire) et
-  graphique des dépenses du mois par domaine, avec saisie rapide d'une dépense.
+  graphique des dépenses du mois par domaine, avec saisie d'une dépense.
 - **Comptes** : soldes, création, correction du solde, archivage.
+- **Calendrier** : chaque dépense, virement et salaire du mois à sa date ;
+  dépenses ponctuelles ou récurrentes (chaque semaine, mois ou année).
+- **Virements** : entre deux comptes, ponctuels ou récurrents.
 
 Interface en français, en euros, installable sur iPhone (PWA).
 

@@ -84,6 +84,27 @@ export type Transaction = {
   entries: Entry[];
 };
 
+/** Fréquences proposées à la saisie (la base en accepte d'autres, lues sans erreur). */
+export type Frequency = "daily" | "weekly" | "biweekly" | "monthly" | "quarterly" | "semiannual" | "annual";
+
+/** Dépense ou virement qui se répète ; chaque échéance est enregistrée seule à sa date. */
+export type RecurringRule = {
+  id: string;
+  kind: "expense" | "income" | "transfer";
+  label: string;
+  amountCents: Cents;
+  accountId: string;
+  toAccountId: string | null;
+  categoryId: string | null;
+  frequency: Frequency;
+  /** Première échéance : son jour (de semaine, du mois, de l'année) fixe les suivantes. */
+  startDate: IsoDate;
+  endDate: IsoDate | null;
+  /** Les échéances antérieures ne sont jamais enregistrées. */
+  trackingStart: IsoDate;
+  isActive: boolean;
+};
+
 export type UserSettings = {
   theme: "dark" | "light" | "system";
 };

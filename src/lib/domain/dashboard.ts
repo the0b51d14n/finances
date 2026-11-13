@@ -39,6 +39,20 @@ export function salaryCategory(key: SalaryKey, categories: Category[]): Category
   return categories.find((c) => c.kind === "income" && c.systemKey === categoryKey && !c.archivedAt) ?? null;
 }
 
+/** Choix proposés par le formulaire de dépense : domaines, comptes payeurs, compte par défaut. */
+export function expenseFormOptions(accounts: Account[], categories: Category[]) {
+  // Comptes qui peuvent payer une dépense (ni dette ni placement).
+  const payers = active(accounts)
+    .filter((a) => a.type !== "debt" && a.type !== "investment")
+    .map((a) => ({ id: a.id, name: a.name }));
+  const preferred = defaultExpenseAccount(accounts);
+  return {
+    categories: categories.filter((c) => c.kind === "expense" && !c.archivedAt).map((c) => ({ id: c.id, name: c.name })),
+    accounts: payers,
+    defaultAccountId: (payers.find((p) => p.id === preferred?.id) ?? payers[0])?.id ?? "",
+  };
+}
+
 export type DashboardData = {
   totalCents: Cents;
   savingsCents: Cents;

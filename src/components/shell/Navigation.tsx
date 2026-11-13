@@ -7,11 +7,13 @@ import { signOutAction } from "@/app/actions/auth";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import styles from "./shell.module.css";
 
-type NavItem = { href: string; label: string; icon: IconName };
+type NavItem = { href: string; label: string; short: string; icon: IconName };
 
 const SECTIONS: NavItem[] = [
-  { href: "/", label: "Tableau de bord", icon: "home" },
-  { href: "/comptes", label: "Comptes", icon: "wallet" },
+  { href: "/", label: "Tableau de bord", short: "Accueil", icon: "home" },
+  { href: "/comptes", label: "Comptes", short: "Comptes", icon: "wallet" },
+  { href: "/calendrier", label: "Calendrier", short: "Calendrier", icon: "calendar" },
+  { href: "/virements", label: "Virements", short: "Virements", icon: "swap" },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -82,7 +84,7 @@ function NavigationView({ pathname }: { pathname: string }) {
         {SECTIONS.map((item) => (
           <Link key={item.href} href={item.href} className={styles.bottomItem} aria-current={isActive(pathname, item.href) ? "page" : undefined}>
             <Icon name={item.icon} size={22} />
-            <span>{item.label === "Tableau de bord" ? "Accueil" : item.label}</span>
+            <span>{item.short}</span>
           </Link>
         ))}
         <form action={signOutAction} className={styles.bottomForm}>

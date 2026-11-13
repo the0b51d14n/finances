@@ -32,11 +32,13 @@ et `delete_transaction`, atomiques et auditées.
 
 ## 3. Statuts
 
-Il n'existe **aucune étape de confirmation** : toute opération saisie (salaire,
-dépense, ajustement) est **effectuée** (`confirmed`) et datée du jour ; elle
-compte aussitôt dans les soldes. Les statuts `planned` (à venir) et `cancelled`
-(annulée) existent encore en base pour l'historique mais ne sont plus créés et
-n'ont aucun effet sur les soldes.
+Il n'existe **aucune étape de confirmation** : le statut découle de la date.
+
+- **Effectuée** (`confirmed`) : date aujourd'hui ou passée ; compte dans les soldes.
+- **À venir** (`planned`) : date future ; aucun effet sur les soldes. Dès que sa
+  date est atteinte, elle devient effectuée toute seule, à sa date.
+- **Annulée** (`cancelled`) : échéance récurrente supprimée ; conservée pour ne
+  pas être recréée, sans aucun effet.
 
 ## 4. Comptes et soldes
 
@@ -111,8 +113,8 @@ les totaux calculés) :
   le compte courant secondaire (à défaut, le premier compte courant). Le montant
   affiché est la somme reçue sur le mois en cours pour cette ligne.
 - **Dépenses par domaine** = dépenses effectuées du mois calendaire en cours,
-  regroupées par catégorie. Une dépense saisie depuis le tableau de bord est
-  datée du jour et payée par le compte choisi (par défaut le compte courant
+  regroupées par catégorie. Une dépense a un nom (facultatif : le nom du domaine
+  sinon) et est payée par le compte choisi (par défaut le compte courant
   principal).
 
 Pour les tickets-restaurant, cartes cadeaux et bons d'achat, une dépense ne peut
@@ -135,7 +137,27 @@ depuis un portefeuille de tickets-restaurant sont interdits.
 - Les analyses affichent la dépense totale et précisent « dont X € en tickets ».
 - L'éligibilité d'un achat aux tickets n'est jamais supposée : c'est un choix de saisie.
 
-## 8. Dates
+## 8. Dépenses et virements récurrents, calendrier
+
+- Une dépense ou un virement se saisit **une fois** (à une date, passée ou
+  future) ou **répété** : chaque semaine (jour de la semaine choisi), chaque mois
+  (numéro du jour, borné à la fin du mois : le 31 devient le 30 ou le 28) ou
+  chaque année (date choisie, reportée à l'année suivante si elle est passée).
+- **Aucun report** : une échéance tombe exactement au jour prévu, même un
+  samedi, un dimanche, un jour férié ou un jour de fermeture de la banque.
+- Chaque échéance est enregistrée **toute seule** comme effectuée dès que sa
+  date est atteinte (au chargement de l'application), une seule fois. Supprimer
+  une échéance l'annule ; « Arrêter » une récurrence supprime les échéances
+  futures et garde les passées.
+- Les revenus récurrents ne sont jamais enregistrés automatiquement : les
+  salaires se saisissent à la main sur le tableau de bord.
+- Le **calendrier** montre, pour le mois choisi, chaque dépense, virement et
+  revenu à sa date (hors ajustements et opérations annulées), ainsi que les
+  échéances futures des récurrences.
+- Un **virement** ne change pas le total possédé. Les tickets-restaurant et
+  avantages affectés ne peuvent être ni source ni destination d'un virement.
+
+## 9. Dates
 
 Les dates d'opération sont des jours civils (`AAAA-MM-JJ`). Le « jour courant »
 est déterminé dans le fuseau **Europe/Paris** ; toute l'arithmétique de dates se
