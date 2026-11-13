@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { deleteTransactionAction } from "@/app/actions/ledger";
+import { confirmAmountAction, deleteTransactionAction } from "@/app/actions/ledger";
 import { TransactionForm } from "@/components/forms/TransactionForm";
 import { toAccountOptions, toCategoryOptions } from "@/components/forms/options";
 import { ActionButton } from "@/components/ui/forms";
@@ -52,6 +52,20 @@ async function Operation({ params }: { params: PageProps<"/operations/[id]">["pa
       {tx.status === "cancelled" && (
         <Notice tone="warning" title={tx.recurrenceId ? "Échéance ignorée" : "Opération annulée"}>
           Elle est conservée pour l&apos;historique mais n&apos;a aucun effet.
+        </Notice>
+      )}
+
+      {rule?.variableAmount && tx.status === "confirmed" && tx.updatedAt === tx.createdAt && (
+        <Notice tone="info" title="Montant à confirmer">
+          <span className="stack-sm" style={{ display: "flex" }}>
+            <span>
+              Compté automatiquement {formatCents(tx.amountCents)} (montant prévu). S&apos;il correspond à ce que tu as reçu, confirme-le ;
+              sinon corrige-le dans « Modifier l&apos;opération ».
+            </span>
+            <ActionButton action={confirmAmountAction} fields={{ id: tx.id }} className="btn btn-primary btn-sm">
+              <Icon name="check" size={14} /> Le montant est correct
+            </ActionButton>
+          </span>
         </Notice>
       )}
 

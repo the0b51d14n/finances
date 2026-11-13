@@ -190,3 +190,33 @@
     margin-left: var(--sidebar-width);
   }
 }
+
+/* Pastille de notification (nombre de choses à faire dans l'onglet). */
+.badge {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--negative);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+
+.bottomItem {
+  position: relative;
+}
+
+.bottomItem .badge {
+  position: absolute;
+  top: 4px;
+  left: calc(50% + 6px);
+  margin-left: 0;
+  min-width: 18px;
+  height: 18px;
+  line-height: 18px;
+  font-size: 0.66rem;
+}

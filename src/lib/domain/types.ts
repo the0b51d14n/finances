@@ -102,7 +102,7 @@ export type RecurringRule = {
   trackingStart: IsoDate;
   certainty: Certainty;
   isActive: boolean;
-  /** Montant variable (salaire avec heures sup…) : rappel de saisir le montant réel. */
+  /** Montant variable (salaire avec heures sup…) : l'accueil demande de confirmer le montant reçu. */
   variableAmount: boolean;
   notes: string | null;
   /** Virement du chemin de l'argent : la dépense récurrente qu'il alimente. */

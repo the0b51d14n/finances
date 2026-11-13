@@ -260,6 +260,20 @@ function derivedId(requestId: string | null, tag: string): string {
 /** Crée une règle ; déjà présente (double soumission), elle reste telle quelle. */
 const insertRule = (row: Record<string, unknown>) => sql`${insertInto("recurring_rules", row)} on conflict (id) do nothing`;
 
+/**
+ * « Le montant est correct » : marque le montant d'une échéance variable (salaire…)
+ * comme vérifié, sans le changer. Passe par la fonction SQL auditée ; la date de
+ * modification change, ce qui retire la demande de confirmation de l'accueil.
+ */
+export async function confirmAmountAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const id = String(formData.get("id") ?? "");
+  const { db } = await getSession();
+  const { error } = await db.exec(sql`select public.set_transaction_status(${id}::uuid, 'confirmed', null)`);
+  if (error) return failure(dbErrorMessage(error));
+  refreshAll();
+  return success("Montant confirmé.");
+}
+
 export type MoneyPathResult =
   | {
       ok: true;

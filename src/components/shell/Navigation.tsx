@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { signOutAction } from "@/app/actions/auth";
 import { Icon, type IconName } from "@/components/ui/Icon";
+import { useAlertCounts } from "./Notifications";
 import styles from "./shell.module.css";
 
 type NavItem = { href: string; label: string; icon: IconName };
@@ -64,8 +65,22 @@ export function NavigationFallback() {
   return <NavigationView pathname="" />;
 }
 
+/** Pastille de notification : nombre de choses à faire ou à voir dans l'onglet. */
+function Badge({ count, label }: { count: number; label: string }) {
+  if (count <= 0) return null;
+  return (
+    <span className={styles.badge} aria-label={`${count} notification${count > 1 ? "s" : ""} : ${label}`}>
+      {count}
+    </span>
+  );
+}
+
 function NavigationView({ pathname }: { pathname: string }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const counts = useAlertCounts();
+  const countOf = (href: string) => counts.get(href) ?? 0;
+  // Bouton « Menu » (mobile) : notifications des onglets absents de la barre basse.
+  const menuCount = SECTIONS.filter((s) => !MOBILE_PRIMARY.some((m) => m.href === s.href)).reduce((n, s) => n + countOf(s.href), 0);
   const quickAdd = `/operations/nouvelle?retour=${encodeURIComponent(pathname)}`;
 
   useEffect(() => {
@@ -100,6 +115,7 @@ function NavigationView({ pathname }: { pathname: string }) {
             >
               <Icon name={item.icon} />
               {item.label}
+              <Badge count={countOf(item.href)} label={item.label} />
             </Link>
           ))}
         </nav>
@@ -116,6 +132,7 @@ function NavigationView({ pathname }: { pathname: string }) {
           <Link key={item.href} href={item.href} className={styles.bottomItem} aria-current={isActive(pathname, item.href) ? "page" : undefined}>
             <Icon name={item.icon} size={22} />
             <span>{item.label}</span>
+            <Badge count={countOf(item.href)} label={item.label} />
           </Link>
         ))}
         <Link href={quickAdd} className={styles.fab} aria-label="Ajouter une opération">
@@ -125,11 +142,13 @@ function NavigationView({ pathname }: { pathname: string }) {
           <Link key={item.href} href={item.href} className={styles.bottomItem} aria-current={isActive(pathname, item.href) ? "page" : undefined}>
             <Icon name={item.icon} size={22} />
             <span>{item.label}</span>
+            <Badge count={countOf(item.href)} label={item.label} />
           </Link>
         ))}
         <button type="button" className={styles.bottomItem} onClick={() => setMenuOpen(true)} aria-expanded={menuOpen} aria-controls="menu-mobile">
           <Icon name="menu" size={22} />
           <span>Menu</span>
+          <Badge count={menuCount} label="autres onglets" />
         </button>
       </nav>
 
@@ -153,6 +172,7 @@ function NavigationView({ pathname }: { pathname: string }) {
                 >
                   <Icon name={item.icon} />
                   {item.label}
+                  <Badge count={countOf(item.href)} label={item.label} />
                 </Link>
               ))}
             </nav>

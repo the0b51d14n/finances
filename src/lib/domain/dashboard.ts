@@ -220,15 +220,16 @@ export function computeDashboard(input: DashboardInput): DashboardData {
       });
     }
   }
-  // Montant variable : enregistré automatiquement au montant prévu ; rappel tant
-  // que l'opération n'a pas été modifiée (le montant réel n'a pas été saisi).
+  // Montant variable (salaires…) : enregistré automatiquement au montant prévu ;
+  // l'accueil demande de confirmer le montant reçu tant que l'opération n'a été
+  // ni confirmée (« Le montant est correct ») ni modifiée.
   const variableRules = new Set(input.rules.filter((r) => r.variableAmount).map((r) => r.id));
   for (const t of transactions) {
     if (t.status !== "confirmed" || !t.recurrenceId || !variableRules.has(t.recurrenceId) || t.updatedAt !== t.createdAt) continue;
     alerts.push({
       level: "info",
-      title: `${t.label} : saisir le montant réel`,
-      detail: `Compté au montant prévu (${formatCents(t.amountCents)}) le ${formatDate(t.date)}.`,
+      title: `${t.label} : confirmer le montant reçu`,
+      detail: `Compté ${formatCents(t.amountCents)} le ${formatDate(t.date)} : confirme-le, ou corrige-le s'il est différent.`,
       href: `/operations/${t.id}`,
     });
   }

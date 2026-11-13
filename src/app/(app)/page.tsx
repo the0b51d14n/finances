@@ -4,7 +4,7 @@ import { BarList } from "@/components/charts/BarList";
 import { TransactionList } from "@/components/ledger/TransactionList";
 import { TransferSuggestions } from "@/components/ledger/TransferSuggestions";
 import { Icon } from "@/components/ui/Icon";
-import { Amount, Badge, EmptyState, NatureBadge, Notice, PageHeader, PageSkeleton } from "@/components/ui/primitives";
+import { Amount, Badge, EmptyState, NatureBadge, PageHeader, PageSkeleton } from "@/components/ui/primitives";
 import { addDays, formatDate, formatMonth } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
 import { computeDashboard } from "@/lib/domain/dashboard";
@@ -95,18 +95,6 @@ async function Dashboard() {
           </>
         }
       />
-
-      {d.alerts.length > 0 && (
-        <section className="stack-sm" aria-label="Alertes">
-          {d.alerts.map((alert, i) => (
-            <Link key={i} href={alert.href ?? "/"}>
-              <Notice tone={alert.level === "danger" ? "danger" : alert.level === "warning" ? "warning" : "info"} title={alert.title}>
-                {alert.detail}
-              </Notice>
-            </Link>
-          ))}
-        </section>
-      )}
 
       <section className={styles.balances} aria-label="Soldes">
         <Link href="/previsions" className={`card ${styles.balance} ${styles.balanceMain}`}>

@@ -174,7 +174,7 @@ export function RuleForm({
 
       <label className="checkbox">
         <input type="checkbox" name="variable_amount" defaultChecked={initial.variableAmount} />
-        Montant variable (heures sup, facture…) : me rappeler de saisir le montant réel
+        Montant variable (salaire, heures sup, facture…) : demander de confirmer le montant reçu sur le tableau de bord
       </label>
 
       {editing ? (
