@@ -3,7 +3,6 @@
  *
  *  - Total possédé : somme des soldes de tous les comptes actifs (dettes déduites).
  *  - Épargne       : livrets et épargne spécifique (Livret A, Livret Jeune…).
- *  - Dépenses par domaine : dépenses effectuées du mois en cours, par catégorie.
  *  - Salaires      : montant reçu ce mois-ci pour chaque ligne de salaire.
  */
 import type { Cents } from "@/lib/money";
@@ -56,9 +55,6 @@ export function expenseFormOptions(accounts: Account[], categories: Category[]) 
 export type DashboardData = {
   totalCents: Cents;
   savingsCents: Cents;
-  /** Dépenses effectuées du mois, par catégorie ("" = sans catégorie), triées par montant décroissant. */
-  expenses: { categoryId: string; cents: Cents }[];
-  expenseTotalCents: Cents;
   /** Montant reçu ce mois-ci pour chaque salaire. */
   salaries: Record<SalaryKey, Cents>;
 };
@@ -71,14 +67,6 @@ export function computeDashboard(input: { today: IsoDate; accounts: Account[]; t
   const month = monthKeyOf(today);
   const thisMonth = transactions.filter((t) => t.status === "confirmed" && monthKeyOf(t.date) === month && t.date <= today);
 
-  const byCategory = new Map<string, Cents>();
-  for (const t of thisMonth) {
-    if (t.kind !== "expense") continue;
-    const key = t.categoryId ?? "";
-    byCategory.set(key, (byCategory.get(key) ?? 0) + t.amountCents);
-  }
-  const expenses = [...byCategory.entries()].map(([categoryId, cents]) => ({ categoryId, cents })).sort((a, b) => b.cents - a.cents);
-
   const salaries = Object.fromEntries(
     SALARIES.map((s) => [s.key, thisMonth.filter((t) => t.kind === "income" && t.label === s.label).reduce((sum, t) => sum + t.amountCents, 0)]),
   ) as Record<SalaryKey, Cents>;
@@ -87,8 +75,6 @@ export function computeDashboard(input: { today: IsoDate; accounts: Account[]; t
     // Tout ce qui est possédé : chaque classe de compte, dettes déduites.
     totalCents: totals.netWorthCents + totals.voucherCents,
     savingsCents: totals.savingsCents,
-    expenses,
-    expenseTotalCents: expenses.reduce((s, e) => s + e.cents, 0),
     salaries,
   };
 }

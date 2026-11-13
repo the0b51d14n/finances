@@ -112,10 +112,10 @@ les totaux calculés) :
   Le montant saisi est enregistré comme un revenu effectué du jour, crédité sur
   le compte courant secondaire (à défaut, le premier compte courant). Le montant
   affiché est la somme reçue sur le mois en cours pour cette ligne.
-- **Dépenses par domaine** = dépenses effectuées du mois calendaire en cours,
-  regroupées par catégorie. Une dépense a un nom (facultatif : le nom du domaine
-  sinon) et est payée par le compte choisi (par défaut le compte courant
-  principal).
+- **Dépenses à venir** : calendrier du mois en cours, en lecture seule, qui ne
+  montre que les dépenses futures (opérations à venir et prochaines échéances des
+  dépenses récurrentes). La saisie et la suppression se font dans l'onglet
+  Calendrier.
 
 Pour les tickets-restaurant, cartes cadeaux et bons d'achat, une dépense ne peut
 pas dépasser le solde restant.
