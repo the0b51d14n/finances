@@ -4,11 +4,10 @@ import { BarList } from "@/components/charts/BarList";
 import { TransactionList } from "@/components/ledger/TransactionList";
 import { TransferSuggestions } from "@/components/ledger/TransferSuggestions";
 import { Icon } from "@/components/ui/Icon";
-import { Amount, Badge, EmptyState, NatureBadge, PageHeader, PageSkeleton } from "@/components/ui/primitives";
+import { Amount, Badge, EmptyState, PageHeader, PageSkeleton } from "@/components/ui/primitives";
 import { addDays, formatDate, formatMonth } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
 import { computeDashboard } from "@/lib/domain/dashboard";
-import { formatCents } from "@/lib/money";
 import { CERTAINTY_LABELS } from "@/lib/view/labels";
 import styles from "./dashboard.module.css";
 
@@ -68,14 +67,6 @@ async function Dashboard() {
   const accountsById = new Map(data.accounts.map((a) => [a.id, a]));
   const recent = data.transactions.filter((t) => t.status === "confirmed").slice(0, RECENT_COUNT);
 
-  // Reste à vivre : disponible − échéances à venir − réserve de sécurité.
-  const hasScheduled = d.nextIncome !== null || d.reservedCents > 0;
-  const remainingHint = !hasScheduled
-    ? "Comptes courants et espèces"
-    : d.nextIncome
-      ? `Reste à vivre jusqu'au ${formatDate(d.reservedUntil, "short")} : ${formatCents(d.remainingUntilIncomeCents)}`
-      : `Reste à vivre sur 30 jours : ${formatCents(d.remainingUntilIncomeCents)}`;
-
   return (
     <div className="stack">
       <PageHeader
@@ -98,22 +89,12 @@ async function Dashboard() {
 
       <section className={styles.balances} aria-label="Soldes">
         <Link href="/previsions" className={`card ${styles.balance} ${styles.balanceMain}`}>
-          <span className="row-between">
-            <span className="muted small">Argent disponible</span>
-            <NatureBadge nature="actual" />
-          </span>
+          <span className="muted small">Argent disponible</span>
           <Amount cents={d.totals.availableCents} className={styles.balanceValue} />
-          <span className="faint small">{remainingHint}</span>
         </Link>
         <Link href="/objectifs" className={`card ${styles.balance}`}>
-          <span className="row-between">
-            <span className="muted small">Épargne totale</span>
-            <NatureBadge nature="actual" />
-          </span>
+          <span className="muted small">Épargne totale</span>
           <Amount cents={d.totals.savingsCents} className={styles.balanceValue} />
-          <span className="faint small">
-            {d.allocatedToGoalsCents > 0 ? `dont ${formatCents(d.allocatedToGoalsCents)} affectés aux objectifs` : "Livrets et épargne"}
-          </span>
         </Link>
       </section>
 
@@ -132,12 +113,10 @@ async function Dashboard() {
           <div className={styles.figure}>
             <span className="muted small">Dépenses</span>
             <Amount cents={-d.month.expenseCents} signed className={styles.figureValue} />
-            {d.month.voucherExpenseCents > 0 && <span className="faint tiny">dont {formatCents(d.month.voucherExpenseCents)} en tickets</span>}
           </div>
           <div className={styles.figure}>
             <span className="muted small">Solde net du mois</span>
             <Amount cents={d.month.netCents} colored className={styles.figureValue} />
-            <span className="faint tiny">Hors virements entre vos comptes</span>
           </div>
         </div>
       </section>

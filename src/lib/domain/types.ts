@@ -183,7 +183,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   billReminderDays: 7,
   comparisonMonths: 6,
   forecastIncludeProbable: false,
-  preserveBudgetsInForecast: true,
+  preserveBudgetsInForecast: false,
   notifyBudgetAlerts: true,
   notifyUpcomingBills: true,
   notifyLowBalance: true,

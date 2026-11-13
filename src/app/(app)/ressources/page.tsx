@@ -50,7 +50,6 @@ async function Resources() {
     <div className="stack">
       <PageHeader
         title="Ressources et avantages"
-        subtitle="Salaires, aides et avantages : montants estimés et sommes réellement reçues."
         actions={
           <Link href="/calendrier/regles/nouvelle?type=income&retour=/ressources" className="btn btn-primary">
             <Icon name="plus" size={16} /> Ressource récurrente

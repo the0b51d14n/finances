@@ -198,9 +198,9 @@ async function Operations({ searchParams }: { searchParams: Promise<Search> }) {
 
       {hasFilters && (
         <section className="grid-stats">
-          <StatTile label="Revenus effectués (filtre)" cents={income} nature="actual" />
-          <StatTile label="Dépenses effectuées (filtre)" cents={expense} nature="actual" />
-          <StatTile label="Solde net (filtre)" cents={income - expense} nature="actual" tone="auto" hint="Transferts internes exclus" />
+          <StatTile label="Revenus" cents={income} nature="actual" />
+          <StatTile label="Dépenses" cents={expense} nature="actual" />
+          <StatTile label="Solde" cents={income - expense} nature="actual" tone="auto" hint="Transferts internes exclus" />
         </section>
       )}
 

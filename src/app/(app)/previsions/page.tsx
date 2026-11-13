@@ -11,7 +11,7 @@ import { Amount, Badge, Notice, PageHeader, PageSkeleton, StatTile } from "@/com
 import { addDays, formatDate, isValidIsoDate } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
 import { accountClass, balancesAt, totalsByClass } from "@/lib/domain/accounts";
-import { computeDashboard, forecastEventsFor, horizonEnd } from "@/lib/domain/dashboard";
+import { forecastEventsFor, horizonEnd } from "@/lib/domain/dashboard";
 import { includeEvent, minBalance, nextIncome, projectDaily, type ForecastEvent } from "@/lib/domain/forecast";
 import { PRIORITY_LABELS, goalAccumulated } from "@/lib/domain/goals";
 import { VERDICT_LABELS, simulatePurchase, type SimulationResult } from "@/lib/domain/simulator";
@@ -45,8 +45,6 @@ async function Forecast({ searchParams }: { searchParams: Promise<Search> }) {
   const hasAvailable = data.accounts.some((a) => !a.archivedAt && accountClass(a.type) === "available");
   const events = forecastEventsFor(data);
   const end = horizonEnd(today);
-  // Reste à vivre (scénario garanti), même calcul que le tableau de bord.
-  const dash = computeDashboard({ ...data, categoryName: (id) => categoriesById.get(id)?.name ?? "Sans catégorie" });
 
   const horizon = HORIZONS.find((h) => String(h) === one(sp.horizon)) ?? 90;
   const scenarioParam = one(sp.scenario);
@@ -60,7 +58,6 @@ async function Forecast({ searchParams }: { searchParams: Promise<Search> }) {
   const main = showEstimated ? estimated : guaranteed;
   const low = minBalance(main, today, chartEnd);
   const income = nextIncome(events, showEstimated ? "estimated" : "guaranteed", today);
-  const uncertain = events.filter((e) => e.deltaCents > 0 && e.certainty === "uncertain" && e.date <= chartEnd);
 
   // Liste des mouvements à venir avec solde après chacun (scénario affiché).
   const shown = events.filter((e) => e.date <= addDays(today, 60) && includeEvent(e, showEstimated ? "estimated" : "guaranteed", withBudgets));
@@ -115,7 +112,55 @@ async function Forecast({ searchParams }: { searchParams: Promise<Search> }) {
 
   return (
     <div className="stack">
-      <PageHeader title="Prévisions et simulateur d'achat" subtitle="Solde disponible (comptes courants + espèces) projeté jour par jour, dans l'ordre chronologique des mouvements." />
+      <PageHeader title="Prévisions et simulateur d'achat" />
+
+      <section className="card stack" id="prevision">
+        <div className="row-between">
+          <h2>Solde disponible prévu</h2>
+          <div className="row">
+            {HORIZONS.map((h) => (
+              <Link key={h} href={href({ horizon: String(h) })} className={`btn btn-sm ${h === horizon ? "" : "btn-ghost"}`}>
+                {h === 365 ? "1 an" : `${h} j`}
+              </Link>
+            ))}
+          </div>
+        </div>
+        {hasProbable && (
+          <div className="row">
+            <Link href={href({ scenario: "garanti" })} className={`btn btn-sm ${!showEstimated ? "" : "btn-ghost"}`}>
+              Garanti
+            </Link>
+            <Link href={href({ scenario: "estime" })} className={`btn btn-sm ${showEstimated ? "" : "btn-ghost"}`}>
+              Estimé
+            </Link>
+          </div>
+        )}
+        {!hasAvailable ? (
+          <p className="muted small">Ajoutez un compte courant ou des espèces pour obtenir une prévision.</p>
+        ) : (
+          <>
+            <div className="grid-stats">
+              <StatTile label="Aujourd'hui" cents={totals.availableCents} />
+              <StatTile label={low ? `Point le plus bas (${formatDate(low.date, "short")})` : "Point le plus bas"} cents={low?.balanceCents ?? 0} tone="auto" />
+              <StatTile
+                label={income ? `Prochain revenu (${formatDate(income.date, "short")})` : "Prochain revenu"}
+                text={income ? formatCents(income.grossCents) : "—"}
+              />
+            </div>
+            <LineChart
+              ariaLabel="Projection du solde disponible"
+              labels={main.map((p) => formatDate(p.date, "short"))}
+              series={[
+                { id: "guaranteed", label: "Garanti (revenus certains)", slot: 1, values: guaranteed.map((p) => p.balanceCents) },
+                ...(hasProbable ? [{ id: "estimated", label: "Estimé (+ revenus probables)", slot: 2 as const, dashed: true, values: estimated.map((p) => p.balanceCents) }] : []),
+              ]}
+              threshold={settings.safetyReserveCents > 0 ? { value: settings.safetyReserveCents, label: "Réserve de sécurité" } : undefined}
+              height={240}
+              tableStep={horizon > 90 ? 7 : 1}
+            />
+          </>
+        )}
+      </section>
 
       <section className="card stack" id="simulateur">
         <div className="card-header" style={{ marginBottom: 0 }}>
@@ -285,123 +330,6 @@ async function Forecast({ searchParams }: { searchParams: Promise<Search> }) {
           </div>
         )}
       </section>
-
-      <section className="card stack" id="prevision">
-        <div className="row-between">
-          <h2>Solde disponible prévu</h2>
-          <div className="row">
-            {HORIZONS.map((h) => (
-              <Link key={h} href={href({ horizon: String(h) })} className={`btn btn-sm ${h === horizon ? "" : "btn-ghost"}`}>
-                {h === 365 ? "1 an" : `${h} j`}
-              </Link>
-            ))}
-          </div>
-        </div>
-        {hasProbable && (
-          <div className="row">
-            <Link href={href({ scenario: "garanti" })} className={`btn btn-sm ${!showEstimated ? "" : "btn-ghost"}`}>
-              Garanti
-            </Link>
-            <Link href={href({ scenario: "estime" })} className={`btn btn-sm ${showEstimated ? "" : "btn-ghost"}`}>
-              Estimé
-            </Link>
-          </div>
-        )}
-        {!hasAvailable ? (
-          <p className="muted small">Ajoutez un compte courant ou des espèces pour obtenir une prévision.</p>
-        ) : (
-          <>
-            <div className="grid-stats">
-              <StatTile label="Disponible aujourd'hui" cents={totals.availableCents} nature="actual" />
-              <StatTile
-                label={dash.nextIncome ? "Reste jusqu'au prochain revenu" : "Reste sur 30 jours"}
-                cents={dash.remainingUntilIncomeCents}
-                nature="forecast"
-                tone="auto"
-                hint={
-                  <>
-                    {formatCents(dash.reservedCents)} réservés aux échéances jusqu&apos;au {formatDate(dash.reservedUntil, "short")}
-                    {settings.safetyReserveCents > 0 && ` · réserve de ${formatCents(settings.safetyReserveCents)} déduite`}
-                    {dash.perDayCents !== null && dash.daysUntilIncome ? ` · soit ${formatCents(dash.perDayCents)} par jour` : ""}
-                  </>
-                }
-              />
-              <StatTile
-                label="Point le plus bas"
-                cents={low?.balanceCents ?? 0}
-                nature="forecast"
-                tone="auto"
-                hint={low ? `le ${formatDate(low.date, "short")}` : undefined}
-              />
-              <StatTile label={`Dans ${horizon} jours`} cents={main.at(-1)?.balanceCents ?? 0} nature="forecast" tone="auto" />
-              <StatTile
-                label="Prochain revenu"
-                text={income ? formatCents(income.grossCents) : "—"}
-                nature={income?.certainty === "certain" ? "forecast" : "estimate"}
-                hint={income ? `${income.label}, le ${formatDate(income.date, "short")}` : "Aucun revenu programmé"}
-              />
-            </div>
-            <LineChart
-              ariaLabel="Projection du solde disponible"
-              labels={main.map((p) => formatDate(p.date, "short"))}
-              series={[
-                { id: "guaranteed", label: "Garanti (revenus certains)", slot: 1, values: guaranteed.map((p) => p.balanceCents) },
-                ...(hasProbable ? [{ id: "estimated", label: "Estimé (+ revenus probables)", slot: 2 as const, dashed: true, values: estimated.map((p) => p.balanceCents) }] : []),
-              ]}
-              threshold={settings.safetyReserveCents > 0 ? { value: settings.safetyReserveCents, label: "Réserve de sécurité" } : undefined}
-              height={240}
-              tableStep={horizon > 90 ? 7 : 1}
-            />
-            {uncertain.length > 0 && (
-              <p className="faint small">
-                Non comptés (incertains) : {uncertain.map((e) => `${e.label} ${formatCents(e.grossCents)} le ${formatDate(e.date, "short")}`).join(" · ")}.
-              </p>
-            )}
-          </>
-        )}
-      </section>
-
-      {hasAvailable && (
-        <section className="card">
-          <div className="card-header">
-            <h2>D&apos;où vient le reste à vivre ?</h2>
-            <span className="faint small">Scénario garanti, jusqu&apos;au {formatDate(dash.reservedUntil, "short")}</span>
-          </div>
-          <ul className="list">
-            <li>
-              <span>Argent disponible aujourd&apos;hui</span>
-              <Amount cents={totals.availableCents} signed />
-            </li>
-            {dash.reservedEvents.map((e, i) => (
-              <li key={i}>
-                <span className="list-main">
-                  <span>{e.source === "budget" ? `Enveloppe ${categoriesById.get(e.categoryId ?? "")?.name ?? "budget"}` : e.label}</span>
-                  <span className="faint tiny">
-                    {formatDate(e.date, "short")} · {SOURCE_LABELS[e.source]}
-                  </span>
-                </span>
-                <Amount cents={e.deltaCents} signed />
-              </li>
-            ))}
-            {settings.safetyReserveCents > 0 && (
-              <li>
-                <span>Réserve de sécurité (Paramètres)</span>
-                <Amount cents={-settings.safetyReserveCents} signed />
-              </li>
-            )}
-            <li>
-              <strong>Reste à vivre</strong>
-              <Amount cents={dash.remainingUntilIncomeCents} signed colored className="num" />
-            </li>
-          </ul>
-          <p className="faint small">
-            {dash.nextIncome
-              ? `Le prochain revenu certain (${dash.nextIncome.label}, ${formatCents(dash.nextIncome.grossCents)}) arrive le ${formatDate(dash.nextIncome.date, "short")} : il n'est pas compté ici.`
-              : "Aucun revenu certain programmé : le calcul couvre les 30 prochains jours."}{" "}
-            Les revenus probables ou incertains ne sont jamais comptés.
-          </p>
-        </section>
-      )}
 
       <section className="card">
         <div className="card-header">

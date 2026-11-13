@@ -34,7 +34,6 @@ async function Goals() {
     <div className="stack">
       <PageHeader
         title="Épargne et objectifs"
-        subtitle="Un objectif réserve une part de l'argent déjà présent sur vos comptes : il ne s'ajoute jamais aux soldes."
         actions={
           <Link href="/objectifs/nouveau" className="btn btn-primary">
             <Icon name="plus" size={16} /> Nouvel objectif

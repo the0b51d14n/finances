@@ -96,7 +96,6 @@ async function Calendar({ searchParams }: { searchParams: Promise<Search> }) {
     <div className="stack">
       <PageHeader
         title="Calendrier financier"
-        subtitle="Échéances récurrentes et opérations à venir. Chacune compte automatiquement à sa date."
         actions={
           <Link href="/calendrier/regles/nouvelle" className="btn btn-primary">
             <Icon name="plus" size={16} /> Échéance récurrente

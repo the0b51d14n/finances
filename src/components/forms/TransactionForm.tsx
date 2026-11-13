@@ -68,6 +68,12 @@ export function TransactionForm({
   const sourceAccounts = accounts.filter((a) => usable(a) && (kind !== "transfer" || isTransferable(a.type)));
   const kindCategories = categories.filter((c) => c.kind === kind && (!c.archived || c.id === initial.categoryId));
   const err = (name: string) => errors[name];
+  // « Plus d'options » s'ouvre si l'une d'elles est remplie ou en erreur.
+  const moreOpen =
+    !!initial.notes ||
+    initial.isExceptional ||
+    initial.payments.length > 1 ||
+    ["payments", "voucher_amount", "path", "repeat", "notes"].some((k) => !!errors[k]);
 
   return (
     <form onSubmit={onSubmit} className="form" noValidate>
@@ -81,7 +87,7 @@ export function TransactionForm({
       <fieldset>
         <legend className="visually-hidden">Type de mouvement</legend>
         <div className="segmented">
-          {KIND_OPTIONS.map((o) => (
+          {KIND_OPTIONS.filter((o) => o.value !== "adjustment" || initial.kind === "adjustment").map((o) => (
             <label key={o.value}>
               <input type="radio" name="kind" value={o.value} checked={kind === o.value} onChange={() => setKind(o.value)} disabled={editing && !!initial.recurrenceId} />
               {o.label}
@@ -92,7 +98,7 @@ export function TransactionForm({
       {editing && initial.recurrenceId && <input type="hidden" name="kind" value={kind} />}
 
       <div className="form-grid">
-        <Field id="amount" label="Montant (€)" error={err("amount")} hint="Toujours positif : le type détermine le sens.">
+        <Field id="amount" label="Montant (€)" error={err("amount")}>
           <input
             id="amount"
             name="amount"
@@ -178,7 +184,7 @@ export function TransactionForm({
         )}
 
         {kind === "adjustment" && (
-          <Field id="direction" label="Sens de la correction" error={err("direction")} hint="Préférez l'ajustement depuis la page du compte (saisie du solde constaté).">
+          <Field id="direction" label="Sens de la correction" error={err("direction")}>
             <select id="direction" name="direction" className="select" defaultValue={initial.direction}>
               <option value="increase">Augmenter le solde</option>
               <option value="decrease">Diminuer le solde</option>
@@ -187,6 +193,10 @@ export function TransactionForm({
         )}
       </div>
 
+      {/* Options rares, repliées : l'essentiel (montant, libellé, date, compte, catégorie) reste seul visible. */}
+      <details className="disclosure" open={moreOpen || undefined}>
+        <summary>Plus d&apos;options</summary>
+        <div className="stack" style={{ marginTop: 12 }}>
       {kind === "expense" && repeat === "none" && !initial.recurrenceId && (
         <PaymentsEditor
           accounts={sourceAccounts}
@@ -210,7 +220,7 @@ export function TransactionForm({
       )}
 
       {!editing && kind !== "adjustment" && !initial.recurrenceId && (
-        <Field id="repeat" label="Récurrence" error={err("repeat")} hint="Crée aussi l'échéance récurrente, visible dans le calendrier.">
+        <Field id="repeat" label="Récurrence" error={err("repeat")}>
           <select id="repeat" name="repeat" className="select" value={repeat} onChange={(e) => setRepeat(e.target.value)}>
             <option value="none">Ne pas répéter</option>
             {Object.entries(FREQUENCY_LABELS).map(([value, label]) => (
@@ -225,13 +235,15 @@ export function TransactionForm({
       {kind === "expense" && (
         <label className="checkbox">
           <input type="checkbox" name="is_exceptional" defaultChecked={initial.isExceptional} />
-          Dépense exceptionnelle (signalée à part dans les analyses)
+          Dépense exceptionnelle
         </label>
       )}
 
-      <Field id="notes" label="Notes (facultatif)" error={err("notes")}>
+      <Field id="notes" label="Notes" error={err("notes")}>
         <textarea id="notes" name="notes" className="textarea" maxLength={2000} defaultValue={initial.notes} />
       </Field>
+        </div>
+      </details>
 
       <FormMessage state={state} />
       <div className="form-actions">

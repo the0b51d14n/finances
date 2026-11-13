@@ -110,7 +110,6 @@ async function Purchases({ searchParams }: { searchParams: Promise<Search> }) {
     <div className="stack">
       <PageHeader
         title="Achats planifiés"
-        subtitle="Listez vos achats (logement, équipement…) : l'application calcule la première date raisonnable pour chacun, en tenant compte des précédents."
       />
 
       {projects.length > 0 && (

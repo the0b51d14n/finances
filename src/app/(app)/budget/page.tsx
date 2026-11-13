@@ -36,7 +36,6 @@ async function Budgets() {
     <div className="stack">
       <PageHeader
         title="Budget"
-        subtitle="Dépenses effectuées par catégorie, sur des périodes calendaires (semaine du lundi au dimanche, mois)."
       />
 
       {statuses.length === 0 && (

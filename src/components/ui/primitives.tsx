@@ -75,8 +75,6 @@ export function StatTile({
   label,
   cents,
   text,
-  nature,
-  hint,
   href,
   tone,
   emphasis = false,
@@ -84,6 +82,7 @@ export function StatTile({
   label: string;
   cents?: Cents;
   text?: string;
+  /** Ignorés : les cases n'affichent que le libellé et le montant (interface épurée). */
   nature?: Nature;
   hint?: ReactNode;
   href?: string;
@@ -92,14 +91,10 @@ export function StatTile({
 }) {
   const body = (
     <div className="card stack-sm" style={{ gap: 6, height: "100%", borderColor: emphasis ? "var(--accent)" : undefined }}>
-      <div className="row-between" style={{ gap: 6 }}>
-        <span className="muted small">{label}</span>
-        {nature && <NatureBadge nature={nature} />}
-      </div>
+      <span className="muted small">{label}</span>
       <div style={{ fontSize: "1.45rem", fontWeight: 650, letterSpacing: "-0.02em" }}>
         {cents !== undefined ? <Amount cents={cents} colored={tone === "auto"} /> : <span>{text}</span>}
       </div>
-      {hint && <div className="faint small">{hint}</div>}
     </div>
   );
   return href ? (
