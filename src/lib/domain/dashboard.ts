@@ -12,7 +12,7 @@
  */
 import { formatCents, type Cents } from "@/lib/money";
 import { addDays, addMonthsToKey, diffDays, formatDate, monthKeyOf, monthRange, type IsoDate } from "@/lib/dates";
-import { accountClass, balancesAt, hasExpiry, totalsByClass, type BalanceTotals } from "./accounts";
+import { balancesAt, hasExpiry, totalsByClass, type BalanceTotals } from "./accounts";
 import { budgetPeriodRange, evaluateBudget, inRange, spentInRange, type BudgetEvaluation } from "./budgets";
 import {
   FORECAST_HORIZON_DAYS,
@@ -168,23 +168,6 @@ export function computeDashboard(input: DashboardInput): DashboardData {
   const alerts: DashboardAlert[] = [];
   const hasAccounts = accounts.some((a) => !a.archivedAt);
 
-  if (settings.notifyLowBalance && lowPoint && accounts.some((a) => !a.archivedAt && accountClass(a.type) === "available")) {
-    if (lowPoint.balanceCents < 0) {
-      alerts.push({
-        level: "danger",
-        title: "Découvert prévu",
-        detail: `Le solde disponible pourrait devenir négatif le ${formatDate(lowPoint.date)}.`,
-        href: "/previsions",
-      });
-    } else if (lowPoint.balanceCents < settings.safetyReserveCents) {
-      alerts.push({
-        level: "warning",
-        title: "Réserve de sécurité entamée",
-        detail: `Le solde disponible prévu passe sous votre réserve le ${formatDate(lowPoint.date)}.`,
-        href: "/previsions",
-      });
-    }
-  }
   if (settings.notifyBudgetAlerts) {
     for (const { budget, evaluation } of budgets) {
       const name = input.categoryName(budget.categoryId);

@@ -218,9 +218,9 @@ describe("tableau de bord", () => {
     expect(d.alerts).toEqual([]);
   });
 
-  it("alerte quand la réserve de sécurité serait entamée", () => {
+  it("n'alerte plus sur le solde prévu (système de prévision retiré)", () => {
     const d = dashboard(60_000);
     expect(d.lowPoint).toEqual({ date: "2026-10-27", balanceCents: 48_000 });
-    expect(d.alerts[0]).toMatchObject({ level: "warning", title: "Réserve de sécurité entamée" });
+    expect(d.alerts).toEqual([]);
   });
 });

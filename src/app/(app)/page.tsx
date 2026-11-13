@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { BarList } from "@/components/charts/BarList";
 import { TransactionList } from "@/components/ledger/TransactionList";
-import { TransferSuggestions } from "@/components/ledger/TransferSuggestions";
 import { Icon } from "@/components/ui/Icon";
 import { Amount, Badge, EmptyState, PageHeader, PageSkeleton } from "@/components/ui/primitives";
 import { addDays, formatDate, formatMonth } from "@/lib/dates";
@@ -88,7 +87,7 @@ async function Dashboard() {
       />
 
       <section className={styles.balances} aria-label="Soldes">
-        <Link href="/previsions" className={`card ${styles.balance} ${styles.balanceMain}`}>
+        <Link href="/comptes" className={`card ${styles.balance} ${styles.balanceMain}`}>
           <span className="muted small">Argent disponible</span>
           <Amount cents={d.totals.availableCents} className={styles.balanceValue} />
         </Link>
@@ -177,15 +176,6 @@ async function Dashboard() {
         </section>
       )}
 
-      {d.transfers.length > 0 && (
-        <section className="card">
-          <div className="card-header">
-            <h2>Virements conseillés</h2>
-            <span className="faint small">30 prochains jours</span>
-          </div>
-          <TransferSuggestions suggestions={d.transfers} accountsById={accountsById} returnTo="/" />
-        </section>
-      )}
     </div>
   );
 }

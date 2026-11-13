@@ -75,13 +75,11 @@ export function SettingsForm({ settings, accounts = [] }: { settings: UserSettin
         </Field>
       </div>
       <fieldset className="stack-sm">
-        <legend className="field-label">Prévisions</legend>
-        {check("preserveBudgetsInForecast", "Préserver les enveloppes budgétaires dans les prévisions", "Le simulateur réserve ce qu'il reste à dépenser dans chaque budget.")}
-        {check("forecastIncludeProbable", "Afficher le scénario estimé par défaut", "Inclut les revenus « probables » dans la courbe principale. Le verdict d'achat reste basé sur le scénario garanti.")}
+        <legend className="field-label">Simulateur d&apos;achat</legend>
+        {check("preserveBudgetsInForecast", "Garder de quoi respecter mes budgets")}
       </fieldset>
       <fieldset className="stack-sm">
         <legend className="field-label">Notifications des onglets</legend>
-        {check("notifyLowBalance", "Solde prévu sous la réserve ou négatif")}
         {check("notifyBudgetAlerts", "Budgets proches ou dépassés")}
         <span className="field-hint">Les alertes sont affichées dans l&apos;application ; aucune notification push n&apos;est envoyée dans cette version.</span>
       </fieldset>

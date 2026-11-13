@@ -19,7 +19,7 @@ const SECTIONS: NavItem[] = [
   { href: "/analyses", label: "Analyses mensuelles", icon: "chart" },
   { href: "/objectifs", label: "Épargne et objectifs", icon: "target" },
   { href: "/ressources", label: "Ressources et avantages", icon: "gift" },
-  { href: "/previsions", label: "Prévisions et simulateur", icon: "trend" },
+  { href: "/previsions", label: "Simulateur d'achat", icon: "trend" },
   { href: "/achats", label: "Achats planifiés", icon: "cart" },
   { href: "/parametres", label: "Paramètres", icon: "settings" },
 ];
@@ -27,7 +27,7 @@ const SECTIONS: NavItem[] = [
 const MOBILE_PRIMARY: NavItem[] = [
   { href: "/", label: "Accueil", icon: "home" },
   { href: "/operations", label: "Opérations", icon: "list" },
-  { href: "/previsions", label: "Prévisions", icon: "trend" },
+  { href: "/previsions", label: "Simulateur", icon: "trend" },
 ];
 
 function isActive(pathname: string, href: string) {

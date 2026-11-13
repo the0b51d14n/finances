@@ -186,6 +186,11 @@ sont toujours comptées (prudence).
 
 ## 11. Prévisions
 
+> L'affichage des prévisions (courbe du solde, mouvements prévus, alertes de
+> découvert, virements conseillés sur l'accueil) a été retiré : il ne servait
+> pas. Le calcul ci-dessous est conservé uniquement pour le **simulateur
+> d'achat** et les **achats planifiés** (meilleur moment pour acheter).
+
 Le solde **disponible** est projeté jour par jour, dans l'ordre chronologique,
 à partir du disponible constaté aujourd'hui et des mouvements à venir (effet sur
 le disponible uniquement). Les échéances échues étant enregistrées

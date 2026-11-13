@@ -26,7 +26,7 @@ export default function LoginPage() {
             €
           </span>
           <h1>Finances</h1>
-          <p className="muted small">Vos comptes, budgets et prévisions, au même endroit.</p>
+          <p className="muted small">Vos comptes, budgets et achats, au même endroit.</p>
         </div>
         <Suspense fallback={<div className="skeleton" style={{ height: 280 }} />}>
           <LoginForm />
