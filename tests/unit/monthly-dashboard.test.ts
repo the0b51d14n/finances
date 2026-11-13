@@ -214,7 +214,8 @@ describe("tableau de bord", () => {
     expect(d.daysUntilIncome).toBe(3);
     expect(d.perDayCents).toBe(12_666);
     expect(d.upcomingBills.map((b) => b.label)).toEqual(["Téléphone", "Loyer"]);
-    expect(d.alerts.map((a) => a.title)).toEqual(["1 échéance(s) dans les 7 prochains jours"]);
+    // Pas de notification pour les simples échéances à venir (elles sont prévues).
+    expect(d.alerts).toEqual([]);
   });
 
   it("alerte quand la réserve de sécurité serait entamée", () => {

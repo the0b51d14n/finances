@@ -195,19 +195,6 @@ export function computeDashboard(input: DashboardInput): DashboardData {
       }
     }
   }
-  if (settings.notifyUpcomingBills) {
-    const soon = events.filter(
-      (e) => e.source !== "budget" && e.deltaCents < 0 && !e.overdue && e.date <= addDays(today, settings.billReminderDays),
-    );
-    if (soon.length > 0) {
-      alerts.push({
-        level: "info",
-        title: `${soon.length} échéance(s) dans les ${settings.billReminderDays} prochains jours`,
-        detail: soon.map((e) => e.label).slice(0, 4).join(", "),
-        href: "/calendrier",
-      });
-    }
-  }
   for (const a of accounts) {
     if (a.archivedAt || !hasExpiry(a.type) || !a.validUntil) continue;
     const balance = balances.get(a.id) ?? 0;

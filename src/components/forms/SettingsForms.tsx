@@ -69,9 +69,7 @@ export function SettingsForm({ settings, accounts = [] }: { settings: UserSettin
         <Field id="budget_alert_pct" label="Alerte budget à partir de (%)" error={errors.budget_alert_pct}>
           <input id="budget_alert_pct" name="budget_alert_pct" className="input" inputMode="numeric" defaultValue={settings.budgetAlertPct} />
         </Field>
-        <Field id="bill_reminder_days" label="Rappel des échéances (jours)" error={errors.bill_reminder_days}>
-          <input id="bill_reminder_days" name="bill_reminder_days" className="input" inputMode="numeric" defaultValue={settings.billReminderDays} />
-        </Field>
+        <input type="hidden" name="bill_reminder_days" value={settings.billReminderDays} />
         <Field id="comparison_months" label="Mois comparés dans les analyses" error={errors.comparison_months}>
           <input id="comparison_months" name="comparison_months" className="input" inputMode="numeric" defaultValue={settings.comparisonMonths} />
         </Field>
@@ -82,10 +80,9 @@ export function SettingsForm({ settings, accounts = [] }: { settings: UserSettin
         {check("forecastIncludeProbable", "Afficher le scénario estimé par défaut", "Inclut les revenus « probables » dans la courbe principale. Le verdict d'achat reste basé sur le scénario garanti.")}
       </fieldset>
       <fieldset className="stack-sm">
-        <legend className="field-label">Alertes affichées sur le tableau de bord</legend>
+        <legend className="field-label">Notifications des onglets</legend>
         {check("notifyLowBalance", "Solde prévu sous la réserve ou négatif")}
         {check("notifyBudgetAlerts", "Budgets proches ou dépassés")}
-        {check("notifyUpcomingBills", "Échéances à venir")}
         <span className="field-hint">Les alertes sont affichées dans l&apos;application ; aucune notification push n&apos;est envoyée dans cette version.</span>
       </fieldset>
       <FormMessage state={state} />
