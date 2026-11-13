@@ -301,6 +301,7 @@ export const ruleSchema = z
     tracking_start: optionalDate,
     certainty: z.enum(["certain", "probable", "uncertain"]).default("certain"),
     is_active: checkbox,
+    variable_amount: checkbox,
     notes: optionalText(1000),
     apply_from: optionalDate,
   })

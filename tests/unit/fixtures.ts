@@ -89,6 +89,7 @@ export function rule(partial: Partial<RecurringRule> & Pick<RecurringRule, "kind
     trackingStart: "2026-01-01",
     certainty: "certain",
     isActive: true,
+    variableAmount: false,
     notes: null,
     fundedRuleId: null,
     ...partial,

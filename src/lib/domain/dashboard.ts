@@ -220,6 +220,18 @@ export function computeDashboard(input: DashboardInput): DashboardData {
       });
     }
   }
+  // Montant variable : enregistré automatiquement au montant prévu ; rappel tant
+  // que l'opération n'a pas été modifiée (le montant réel n'a pas été saisi).
+  const variableRules = new Set(input.rules.filter((r) => r.variableAmount).map((r) => r.id));
+  for (const t of transactions) {
+    if (t.status !== "confirmed" || !t.recurrenceId || !variableRules.has(t.recurrenceId) || t.updatedAt !== t.createdAt) continue;
+    alerts.push({
+      level: "info",
+      title: `${t.label} : saisir le montant réel`,
+      detail: `Compté au montant prévu (${formatCents(t.amountCents)}) le ${formatDate(t.date)}.`,
+      href: `/operations/${t.id}`,
+    });
+  }
   for (const over of overAllocatedAccounts(activeGoals, input.allocations, balances)) {
     const name = accountsById.get(over.accountId)?.name ?? "un compte";
     alerts.push({

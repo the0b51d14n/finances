@@ -197,6 +197,7 @@ async function Rule({ params }: { params: PageProps<"/calendrier/regles/[id]">["
             trackingStart: rule.trackingStart,
             certainty: rule.certainty,
             isActive: rule.isActive,
+            variableAmount: rule.variableAmount,
             notes: rule.notes ?? "",
           }}
         />

@@ -24,6 +24,7 @@ export type RuleFormValues = {
   trackingStart: string;
   certainty: Certainty;
   isActive: boolean;
+  variableAmount: boolean;
   notes: string;
 };
 
@@ -170,6 +171,11 @@ export function RuleForm({
           </Field>
         </div>
       </details>
+
+      <label className="checkbox">
+        <input type="checkbox" name="variable_amount" defaultChecked={initial.variableAmount} />
+        Montant variable (heures sup, facture…) : me rappeler de saisir le montant réel
+      </label>
 
       {editing ? (
         <label className="checkbox">

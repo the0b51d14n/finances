@@ -465,6 +465,7 @@ export async function saveRuleAction(_prev: ActionState, formData: FormData): Pr
     end_date: v.end_date,
     certainty: v.certainty,
     is_active: v.is_active,
+    variable_amount: v.variable_amount,
     notes: v.notes,
   };
 

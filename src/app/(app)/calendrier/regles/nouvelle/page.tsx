@@ -46,6 +46,7 @@ async function NewRule({ searchParams }: { searchParams: Promise<Search> }) {
             trackingStart: data.today,
             certainty: "certain",
             isActive: true,
+            variableAmount: false,
             notes: "",
           }}
         />

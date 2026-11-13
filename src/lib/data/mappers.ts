@@ -21,7 +21,7 @@ export const CATEGORY_COLUMNS = "id, kind, name, system_key, color, sort_order, 
 export const TRANSACTION_COLUMNS =
   "t.id, t.kind, t.status, t.date, t.label, t.notes, t.amount_cents, t.expected_amount_cents, t.category_id, t.recurrence_id, t.occurrence_date, t.is_exceptional, t.created_at, t.updated_at, t.confirmed_at";
 export const RULE_COLUMNS =
-  "id, kind, label, amount_cents, account_id, to_account_id, category_id, frequency, start_date, end_date, tracking_start, certainty, is_active, notes, funded_rule_id";
+  "id, kind, label, amount_cents, account_id, to_account_id, category_id, frequency, start_date, end_date, tracking_start, certainty, is_active, notes, funded_rule_id, variable_amount";
 export const BUDGET_COLUMNS = "id, category_id, period, amount_cents, alert_pct, is_active";
 export const GOAL_COLUMNS =
   "id, name, target_cents, target_date, monthly_contribution_cents, priority, tracking, account_id, achieved_at, archived_at, notes";
@@ -105,6 +105,7 @@ export function toRule(r: Row): RecurringRule {
     trackingStart: str(r.tracking_start),
     certainty: r.certainty as RecurringRule["certainty"],
     isActive: Boolean(r.is_active),
+    variableAmount: Boolean(r.variable_amount),
     notes: strOrNull(r.notes),
     fundedRuleId: strOrNull(r.funded_rule_id),
   };
