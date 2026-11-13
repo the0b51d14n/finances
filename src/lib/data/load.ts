@@ -1,22 +1,11 @@
 import "server-only";
 import { cache } from "react";
-import type {
-  Account,
-  Budget,
-  Category,
-  GoalAllocation,
-  PurchasePlan,
-  RecurringRule,
-  SavingsGoal,
-  Transaction,
-  UserSettings,
-} from "@/lib/domain/types";
+import type { Account, Category, Transaction, UserSettings } from "@/lib/domain/types";
 import { todayParis } from "@/lib/dates";
 import { sql, updateWhere } from "@/lib/db/sql";
-import type { DbError, UserDb } from "@/lib/db/user-db";
+import type { DbError } from "@/lib/db/user-db";
 import { depletedSingleUseAccounts } from "@/lib/domain/accounts";
-import { dueRealizations, type DueRealization } from "@/lib/domain/realization";
-import { toAccount, toAllocation, toBudget, toCategory, toGoal, toPurchasePlan, toRule, toSettings, toTransaction } from "./mappers";
+import { toAccount, toCategory, toSettings, toTransaction } from "./mappers";
 import { DATA_QUERIES } from "./queries";
 import { getSession } from "./session";
 
@@ -44,16 +33,11 @@ export type FinanceData = {
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
-  rules: RecurringRule[];
-  budgets: Budget[];
-  goals: SavingsGoal[];
-  allocations: GoalAllocation[];
-  purchasePlans: PurchasePlan[];
 };
 
 /**
  * Charge l'ensemble des données de l'utilisateur pour la requête en cours.
- * Les calculs (soldes, budgets, prévisions) sont ensuite faits par les
+ * Les calculs (soldes, totaux, dépenses par domaine) sont ensuite faits par les
  * fonctions pures de src/lib/domain, à partir de l'historique réel :
  * aucun total n'est stocké, donc aucun total ne peut diverger.
  */
@@ -75,16 +59,6 @@ export const loadFinanceData = cache(async (): Promise<FinanceData> => {
   const today = todayParis();
   let data = toFinanceData(res.data, today, email);
 
-  // Aucune confirmation : ce qui est échu (opérations prévues, échéances
-  // récurrentes) est enregistré comme effectué, puis les données sont relues.
-  const due = dueRealizations(data);
-  if (due.length > 0) {
-    await realize(db, due);
-    res = await db.batch(DATA_QUERIES);
-    if (res.error) throw loadError(res.error, "données");
-    data = toFinanceData(res.data, today, email);
-  }
-
   // Carte cadeau, avoir ou bon d'achat épuisé : retiré automatiquement (archivé,
   // les dépenses payées avec restent dans l'historique). Non rechargeable.
   const depleted = depletedSingleUseAccounts(data.accounts, data.transactions, today);
@@ -98,7 +72,7 @@ export const loadFinanceData = cache(async (): Promise<FinanceData> => {
 });
 
 function toFinanceData(rows: Record<string, unknown>[][], today: string, email: string | null): FinanceData {
-  const [[settings], accounts, categories, transactions, rules, budgets, goals, allocations, purchasePlans] = rows;
+  const [[settings], accounts, categories, transactions] = rows;
   return {
     today,
     email,
@@ -106,49 +80,5 @@ function toFinanceData(rows: Record<string, unknown>[][], today: string, email: 
     accounts: accounts.map(toAccount),
     categories: categories.map(toCategory),
     transactions: transactions.map(toTransaction),
-    rules: rules.map(toRule),
-    budgets: budgets.map(toBudget),
-    goals: goals.map(toGoal),
-    allocations: allocations.map(toAllocation),
-    purchasePlans: purchasePlans.map(toPurchasePlan),
   };
-}
-
-const realizationQuery = (d: DueRealization) =>
-  d.type === "confirm"
-    ? sql`select public.set_transaction_status(${d.transactionId}::uuid, 'confirmed', null)`
-    : sql`select public.save_transaction(${d.payload}::jsonb)`;
-
-/**
- * Enregistre les éléments échus en une transaction. En cas d'échec (par
- * exemple une échéance déjà enregistrée par une requête simultanée), chaque
- * élément est retenté seul : un élément en erreur ne bloque pas les autres.
- */
-async function realize(db: UserDb, due: DueRealization[]): Promise<void> {
-  const all = await db.execAll(due.map(realizationQuery));
-  if (!all.error) return;
-  let failed = 0;
-  for (const d of due) {
-    const one = await db.exec(realizationQuery(d));
-    if (one.error) failed++;
-  }
-  if (failed > 0) console.error(`[données] réalisation automatique : ${failed} élément(s) non enregistré(s)`);
-}
-
-export type AuditEntry = { id: number; action: "update" | "status" | "delete"; changedAt: string; oldData: Record<string, unknown> };
-
-export async function loadTransactionAudit(transactionId: string): Promise<AuditEntry[]> {
-  const { db } = await getSession();
-  const { data, error } = await db.rows(sql`
-    select id, action, changed_at, old_data
-      from public.transaction_audit
-     where transaction_id = ${transactionId}
-     order by changed_at desc`);
-  if (error) throw new DataLoadError("historique de l'opération");
-  return data.map((r) => ({
-    id: Number(r.id),
-    action: r.action as AuditEntry["action"],
-    changedAt: String(r.changed_at),
-    oldData: r.old_data as Record<string, unknown>,
-  }));
 }

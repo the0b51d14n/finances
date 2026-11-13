@@ -6,8 +6,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { beforeAll, describe, expect, it } from "vitest";
 import { dbErrorMessage } from "@/lib/data/errors";
-import { ACCOUNT_COLUMNS, toAccount, toRule, toSettings, toTransaction } from "@/lib/data/mappers";
-import { dueRealizations, type DueRealization } from "@/lib/domain/realization";
+import { ACCOUNT_COLUMNS, toAccount, toSettings, toTransaction } from "@/lib/data/mappers";
 import { DATA_QUERIES } from "@/lib/data/queries";
 import { deleteById, insertInto, raw, sql, updateWhere } from "@/lib/db/sql";
 import { userDb, type Executor, type UserDb } from "@/lib/db/user-db";
@@ -111,7 +110,7 @@ describe("lecture complète de l'application (loadFinanceData)", () => {
     const res = await alice.batch(DATA_QUERIES);
     expect(res.error).toBeNull();
     const [[settings], accounts, categories, transactions] = res.data!;
-    expect(toSettings(settings).currency).toBe("EUR");
+    expect(toSettings(settings).theme).toBe("dark");
     expect(accounts.map(toAccount).map((a) => a.name)).toEqual(["Compte courant"]);
     expect(categories.length).toBeGreaterThan(0);
     const tx = transactions.map(toTransaction).find((x) => x.id === save.data!.id)!;
@@ -122,165 +121,6 @@ describe("lecture complète de l'application (loadFinanceData)", () => {
     const other = await bob.batch(DATA_QUERIES);
     expect(other.data![1]).toEqual([]);
     expect(other.data![3]).toEqual([]);
-  });
-
-  it("enregistre automatiquement ce qui est échu, une seule fois (aucune confirmation)", async () => {
-    const today = "2026-11-11";
-    const category = await alice.row<{ id: string }>(sql`select id from public.categories where kind = 'expense' limit 1`);
-    const loyer = await alice.returning<{ id: string }>(
-      insertInto(
-        "recurring_rules",
-        { kind: "expense", label: "Loyer", amount_cents: 75_000, account_id: aliceAccount, category_id: category.data!.id, frequency: "monthly", start_date: "2026-09-05", tracking_start: "2026-10-01" },
-        "id",
-      ),
-    );
-    const planned = await alice.row<{ id: string }>(sql`select public.save_transaction(${{
-      kind: "expense",
-      status: "planned",
-      date: "2026-11-10",
-      label: "Prévue hier",
-      amount_cents: 500,
-      category_id: category.data!.id,
-      entries: [{ account_id: aliceAccount, amount_cents: -500 }],
-    }}::jsonb) as id`);
-    expect(planned.error).toBeNull();
-
-    const load = async () => {
-      const r = await alice.batch(DATA_QUERIES);
-      return { accounts: r.data![1].map(toAccount), transactions: r.data![3].map(toTransaction), rules: r.data![4].map(toRule) };
-    };
-    const query = (d: DueRealization) =>
-      d.type === "confirm"
-        ? sql`select public.set_transaction_status(${d.transactionId}::uuid, 'confirmed', null)`
-        : sql`select public.save_transaction(${d.payload}::jsonb)`;
-
-    const due = dueRealizations({ today, ...(await load()) });
-    expect(due).toHaveLength(3); // 05/10, 05/11 et l'opération prévue d'hier
-    expect((await alice.execAll(due.map(query))).error).toBeNull();
-
-    const after = await load();
-    const occurrences = after.transactions.filter((t) => t.recurrenceId === loyer.data![0].id);
-    expect(occurrences.map((t) => [t.date, t.status, t.amountCents])).toEqual([
-      ["2026-11-05", "confirmed", 75_000],
-      ["2026-10-05", "confirmed", 75_000],
-    ]);
-    expect(after.transactions.find((t) => t.id === planned.data!.id)?.status).toBe("confirmed");
-
-    // Deuxième chargement : rien à refaire ; une requête simultanée serait refusée par la base.
-    expect(dueRealizations({ today, ...after })).toEqual([]);
-    const duplicate = await alice.exec(query(due.find((d) => d.type === "occurrence")!));
-    expect(dbErrorMessage(duplicate.error)).toBe("Cette échéance a déjà été enregistrée.");
-  });
-
-  it("chemin de l'argent : virements et dépense ensemble, tout ou rien, sans doublon", async () => {
-    const newAccount = async (name: string, type: string, cents: number) =>
-      String(
-        (await alice.returning(insertInto("accounts", { name, type, opening_balance_cents: cents, opening_balance_date: "2026-01-01" }, "id"))).data![0].id,
-      );
-    const livret = await newAccount("Livret A", "savings", 500_000);
-    const secondaire = await newAccount("Courant secondaire", "checking", 0);
-    const principal = await newAccount("Courant principal", "checking", 0);
-    const category = await alice.row<{ id: string }>(sql`select id from public.categories where kind = 'expense' limit 1`);
-    const save = (p: Record<string, unknown>) => sql`select public.save_transaction(${p}::jsonb) as id`;
-    const transfer = (rid: string, from: string, to: string, date: string) => ({
-      client_request_id: rid,
-      kind: "transfer",
-      status: "confirmed",
-      date,
-      label: "Virement pour « Canapé »",
-      amount_cents: 65_000,
-      entries: [
-        { account_id: from, amount_cents: -65_000 },
-        { account_id: to, amount_cents: 65_000 },
-      ],
-    });
-    const expense = (categoryId: string | null) => ({
-      client_request_id: "00000000-0000-4000-8000-0000000000e3",
-      kind: "expense",
-      status: "confirmed",
-      date: "2026-02-05",
-      label: "Canapé",
-      amount_cents: 65_000,
-      category_id: categoryId,
-      entries: [{ account_id: principal, amount_cents: -65_000 }],
-    });
-    const path = (categoryId: string | null) => [
-      save(transfer("00000000-0000-4000-8000-0000000000e1", livret, secondaire, "2026-02-03")),
-      save(transfer("00000000-0000-4000-8000-0000000000e2", secondaire, principal, "2026-02-04")),
-      save(expense(categoryId)),
-    ];
-    const balance = async (id: string) =>
-      Number((await alice.row<{ b: number }>(sql`select balance_cents as b from public.account_balances where account_id = ${id}`)).data!.b);
-    const count = async () => Number((await alice.row<{ n: number }>(sql`select count(*) as n from public.transactions`)).data!.n);
-
-    // Dépense invalide (sans catégorie) : la transaction est annulée, aucun virement ne reste.
-    const before = await count();
-    expect((await alice.batch(path(null))).error).not.toBeNull();
-    expect(await count()).toBe(before);
-
-    // Chemin valide : livret → secondaire → principal → dépense.
-    expect((await alice.batch(path(category.data!.id))).error).toBeNull();
-    expect(await count()).toBe(before + 3);
-    expect([await balance(livret), await balance(secondaire), await balance(principal)]).toEqual([435_000, 0, 0]);
-
-    // Double soumission (mêmes identifiants de requête) : rien n'est recréé.
-    expect((await alice.batch(path(category.data!.id))).error).toBeNull();
-    expect(await count()).toBe(before + 3);
-  });
-
-  it("chemin de l'argent récurrent : le virement revient à chaque échéance et disparaît avec la dépense", async () => {
-    const newAccount = async (name: string) =>
-      String((await alice.returning(insertInto("accounts", { name, type: "checking", opening_balance_cents: 10_000, opening_balance_date: "2026-01-01" }, "id"))).data![0].id);
-    const secondaire = await newAccount("Secondaire (abonnement)");
-    const principal = await newAccount("Principal (abonnement)");
-    const category = await alice.row<{ id: string }>(sql`select id from public.categories where kind = 'expense' limit 1`);
-    const abonnement = "00000000-0000-4000-8000-0000000000a1";
-    const virement = "00000000-0000-4000-8000-0000000000a2";
-    const rule = (row: Record<string, unknown>) => sql`${insertInto("recurring_rules", row)} on conflict (id) do nothing`;
-    const save = (p: Record<string, unknown>) => sql`select public.save_transaction(${p}::jsonb) as id`;
-    // Ce qu'enregistre le formulaire : règles, premier virement et première dépense, ensemble.
-    const queries = [
-      rule({ id: abonnement, kind: "expense", label: "Abonnement", amount_cents: 2_160, account_id: principal, category_id: category.data!.id, frequency: "monthly", start_date: "2026-09-06", tracking_start: "2026-09-06" }),
-      rule({ id: virement, kind: "transfer", label: "Virement pour « Abonnement »", amount_cents: 2_160, account_id: secondaire, to_account_id: principal, frequency: "monthly", start_date: "2026-09-05", tracking_start: "2026-09-05", funded_rule_id: abonnement }),
-      save({ client_request_id: "00000000-0000-4000-8000-0000000000a3", kind: "transfer", status: "confirmed", date: "2026-09-05", label: "Virement pour « Abonnement »", amount_cents: 2_160, recurrence_id: virement, occurrence_date: "2026-09-05", entries: [{ account_id: secondaire, amount_cents: -2_160 }, { account_id: principal, amount_cents: 2_160 }] }),
-      save({ client_request_id: "00000000-0000-4000-8000-0000000000a4", kind: "expense", status: "confirmed", date: "2026-09-06", label: "Abonnement", amount_cents: 2_160, category_id: category.data!.id, recurrence_id: abonnement, occurrence_date: "2026-09-06", entries: [{ account_id: principal, amount_cents: -2_160 }] }),
-    ];
-    expect((await alice.execAll(queries)).error).toBeNull();
-    // Double soumission : rien n'est recréé.
-    expect((await alice.execAll(queries)).error).toBeNull();
-
-    const load = async () => {
-      const r = await alice.batch(DATA_QUERIES);
-      return { accounts: r.data![1].map(toAccount), transactions: r.data![3].map(toTransaction), rules: r.data![4].map(toRule) };
-    };
-    const data = await load();
-    expect(data.rules.find((r) => r.id === virement)?.fundedRuleId).toBe(abonnement);
-    expect(data.transactions.filter((t) => t.label.includes("Abonnement"))).toHaveLength(2);
-
-    // Échéances suivantes : virement la veille, dépense le jour même, chaque mois.
-    const mine = dueRealizations({ today: "2026-11-06", ...data }).flatMap((d) =>
-      d.type === "occurrence" && (d.ruleId === virement || d.ruleId === abonnement) ? [[d.ruleId === virement ? "virement" : "dépense", d.date]] : [],
-    );
-    expect(mine).toEqual([
-      ["dépense", "2026-10-06"],
-      ["dépense", "2026-11-06"],
-      ["virement", "2026-10-05"],
-      ["virement", "2026-11-05"],
-    ]);
-
-    // Un virement du chemin est forcément un virement.
-    const invalid = await alice.exec(
-      insertInto("recurring_rules", { kind: "expense", label: "x", amount_cents: 1, account_id: principal, category_id: category.data!.id, frequency: "monthly", start_date: "2026-09-06", funded_rule_id: abonnement }),
-    );
-    expect(invalid.error?.code).toBe("23514");
-
-    // Suppression de la dépense : son virement récurrent disparaît, l'historique reste.
-    expect((await alice.exec(sql`select public.delete_recurring_rule(${abonnement}::uuid)`)).error).toBeNull();
-    const after = await load();
-    expect(after.rules.some((r) => r.id === abonnement || r.id === virement)).toBe(false);
-    const kept = after.transactions.filter((t) => t.label.includes("Abonnement"));
-    expect(kept).toHaveLength(2);
-    expect(kept.every((t) => t.recurrenceId === null)).toBe(true);
   });
 
   it("enregistre et relit les jours de fermeture de la banque d'un compte", async () => {

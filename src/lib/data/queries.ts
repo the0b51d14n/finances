@@ -1,15 +1,5 @@
 import { raw, sql } from "@/lib/db/sql";
-import {
-  ACCOUNT_COLUMNS,
-  ALLOCATION_COLUMNS,
-  BUDGET_COLUMNS,
-  CATEGORY_COLUMNS,
-  GOAL_COLUMNS,
-  PURCHASE_COLUMNS,
-  RULE_COLUMNS,
-  SETTINGS_COLUMNS,
-  TRANSACTION_COLUMNS,
-} from "./mappers";
+import { ACCOUNT_COLUMNS, CATEGORY_COLUMNS, SETTINGS_COLUMNS, TRANSACTION_COLUMNS } from "./mappers";
 
 /** Opérations avec leurs écritures, agrégées en une passe (pas de requête par opération). */
 const TRANSACTIONS_QUERY = sql`
@@ -25,17 +15,11 @@ const TRANSACTIONS_QUERY = sql`
 
 /**
  * Lectures de loadFinanceData, exécutées ensemble dans une seule transaction
- * (un aller-retour). Ordre : paramètres, comptes, catégories, opérations,
- * récurrences, budgets, objectifs, affectations, achats envisagés.
+ * (un aller-retour). Ordre : paramètres, comptes, catégories, opérations.
  */
 export const DATA_QUERIES = [
   sql`select ${raw(SETTINGS_COLUMNS)} from public.user_settings`,
   sql`select ${raw(ACCOUNT_COLUMNS)} from public.accounts order by created_at, id`,
   sql`select ${raw(CATEGORY_COLUMNS)} from public.categories order by kind, sort_order, name`,
   TRANSACTIONS_QUERY,
-  sql`select ${raw(RULE_COLUMNS)} from public.recurring_rules order by label, id`,
-  sql`select ${raw(BUDGET_COLUMNS)} from public.budgets order by created_at, id`,
-  sql`select ${raw(GOAL_COLUMNS)} from public.savings_goals order by priority, created_at`,
-  sql`select ${raw(ALLOCATION_COLUMNS)} from public.goal_allocations order by date, id`,
-  sql`select ${raw(PURCHASE_COLUMNS)} from public.purchase_plans order by created_at, id`,
 ];

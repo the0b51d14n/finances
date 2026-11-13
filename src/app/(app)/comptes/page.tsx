@@ -36,11 +36,6 @@ async function Accounts({ searchParams }: { searchParams: Promise<Search> }) {
   // Carte cadeau, avoir ou bon d'achat épuisé : retiré pour de bon, n'apparaît plus.
   const archived = data.accounts.filter((a) => a.archivedAt && !isExhausted(a, balances.get(a.id)));
   const totals = totalsByClass(active, balances);
-  const plannedByAccount = new Map<string, number>();
-  for (const tx of data.transactions) {
-    if (tx.status !== "planned") continue;
-    for (const e of tx.entries) plannedByAccount.set(e.accountId, (plannedByAccount.get(e.accountId) ?? 0) + e.amountCents);
-  }
 
   const q = one(params.q).trim().toLowerCase();
   const cls = CLASS_ORDER.find((c) => c === one(params.classe)) ?? "";
@@ -138,31 +133,19 @@ async function Accounts({ searchParams }: { searchParams: Promise<Search> }) {
                 </div>
                 <ul className="list">
                   {list.map((a) => {
-                    const planned = plannedByAccount.get(a.id) ?? 0;
                     const balance = balances.get(a.id) ?? 0;
                     return (
-                      <li key={a.id} className={styles.row}>
+                      <li key={a.id}>
                         <Link href={`/comptes/${a.id}`} className="list-link">
                           <span className="list-main">
                             <span style={{ fontWeight: 500 }}>{a.name}</span>
                             <span className="faint tiny">
                               {accountKindLabel(a)}
                               {byBank && ` · ${ACCOUNT_CLASS_LABELS[accountClass(a.type)]}`}
-                              {a.id === data.settings.spendingAccountId && " · compte de dépenses"}
-                              {planned !== 0 && ` · ${formatCents(planned, { signed: true })} prévus`}
                             </span>
                           </span>
                           <Amount cents={balance} className={balance < 0 ? "neg" : ""} />
                         </Link>
-                        <details className={styles.menu}>
-                          <summary aria-label={`Actions pour ${a.name}`}>⋯</summary>
-                          <div className={styles.menuList}>
-                            <Link href={`/operations/nouvelle?compte=${a.id}&retour=/comptes`}>Ajouter une opération</Link>
-                            <Link href={`/operations?compte=${a.id}`}>Voir ses opérations</Link>
-                            <Link href={`/comptes/${a.id}#corriger`}>{a.type === "investment" ? "Mettre à jour la valeur" : "Corriger le solde"}</Link>
-                            <Link href={`/comptes/${a.id}?modifier=1#modifier`}>Modifier ou archiver</Link>
-                          </div>
-                        </details>
                       </li>
                     );
                   })}

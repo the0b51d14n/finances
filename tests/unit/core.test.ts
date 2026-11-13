@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { accountTypeRules, balancesAt, depletedSingleUseAccounts, totalsByClass, typeChangeAllowed } from "@/lib/domain/accounts";
-import { budgetPeriodRange, evaluateBudget, spentInRange } from "@/lib/domain/budgets";
-import { goalAccumulated, goalProgress, overAllocatedAccounts } from "@/lib/domain/goals";
-import { adjustmentFor, buildEntries, entriesToInput, expenseSplit, frequentOperations, possibleDuplicates, secondaryPayments } from "@/lib/domain/ledger";
-import { easterSunday, nextBusinessDay } from "@/lib/dates";
-import { listOccurrences, monthlyEquivalentCents, nextDueDate, occurrenceDates, planStopFrom, realizationIndex, ruleClosedWeekdays } from "@/lib/domain/recurrence";
-import type { SavingsGoal } from "@/lib/domain/types";
-import { account, byId, expense, income, rule, transfer, tx } from "./fixtures";
+import { adjustmentFor, buildEntries } from "@/lib/domain/ledger";
+import { account, byId, expense, income, transfer, tx } from "./fixtures";
 
 const chk = account("chk", "checking", 100_000);
 const liv = account("liv", "savings", 50_000);
@@ -34,7 +29,7 @@ describe("écritures d'une opération", () => {
     expect(buildEntries({ kind: "income", amountCents: 1_000, accountId: "inconnu" }, accountsById).ok).toBe(false);
   });
 
-  it("paie une dépense avec plusieurs moyens (carte cadeau, tickets, compte) et la reconstitue", () => {
+  it("paie une dépense avec plusieurs moyens (carte cadeau, tickets, compte)", () => {
     const gift = account("gift", "earmarked", 5_000, "2026-01-01", { subtype: "gift_card" });
     const ids = byId([...accounts, gift]);
     const res = buildEntries(
@@ -58,21 +53,6 @@ describe("écritures d'une opération", () => {
     expect(buildEntries({ kind: "expense", amountCents: 1_000, accountId: "chk", otherPayments: [{ accountId: "gift", amountCents: 2_000 }] }, ids).ok).toBe(false);
     expect(buildEntries({ kind: "expense", amountCents: 9_000, accountId: "chk", otherPayments: [{ accountId: "gift", amountCents: 1 }, { accountId: "gift", amountCents: 1 }] }, ids).ok).toBe(false);
     expect(buildEntries({ kind: "expense", amountCents: 9_000, accountId: "chk", otherPayments: [{ accountId: "chk", amountCents: 1 }] }, ids).ok).toBe(false);
-
-    const saved = tx("expense", "2026-02-06", 8_000, [["gift", -5_000], ["chk", -2_000], ["tr", -1_000]]);
-    const input = entriesToInput(saved, ids);
-    expect(input).toEqual({
-      kind: "expense",
-      amountCents: 8_000,
-      accountId: "chk", // compte bancaire préféré comme compte principal
-      voucherAccountId: "tr",
-      voucherCents: 1_000,
-      otherPayments: [{ accountId: "gift", amountCents: 5_000 }],
-    });
-    expect(secondaryPayments(input)).toEqual([
-      { accountId: "tr", amountCents: 1_000 },
-      { accountId: "gift", amountCents: 5_000 },
-    ]);
   });
 
   it("retire une carte cadeau ou un bon d'achat épuisé, jamais un moyen rechargeable", () => {
@@ -102,56 +82,6 @@ describe("écritures d'une opération", () => {
     expect(adjustmentFor(1_000, 1_500)).toEqual({ direction: "increase", amountCents: 500 });
     expect(adjustmentFor(1_000, 400)).toEqual({ direction: "decrease", amountCents: 600 });
     expect(adjustmentFor(1_000, 1_000)).toBeNull();
-  });
-
-  it("reconstitue la saisie d'origine pour l'édition", () => {
-    const split = tx("expense", "2026-02-06", 3_000, [["chk", -2_000], ["tr", -1_000]]);
-    expect(entriesToInput(split, accountsById)).toEqual({
-      kind: "expense",
-      amountCents: 3_000,
-      accountId: "chk",
-      voucherAccountId: "tr",
-      voucherCents: 1_000,
-    });
-    expect(expenseSplit(split, accountsById)).toEqual({ totalCents: 3_000, voucherCents: 1_000, otherCents: 2_000 });
-    expect(entriesToInput(transfer("2026-02-05", 100, "chk", "liv"), accountsById)).toEqual({
-      kind: "transfer",
-      amountCents: 100,
-      fromAccountId: "chk",
-      toAccountId: "liv",
-    });
-  });
-});
-
-describe("saisie rapide et doublons", () => {
-  it("repère les opérations saisies deux fois, sauf annulées ou distinguées par une note", () => {
-    const a = expense("2026-10-03", 1_250, "chk", { label: "Boulangerie" });
-    const b = expense("2026-10-03", 1_250, "chk", { label: "boulangerie " });
-    const cancelled = expense("2026-10-03", 1_250, "chk", { label: "Boulangerie", status: "cancelled", confirmedAt: null });
-    const noted = expense("2026-10-03", 1_250, "chk", { label: "Boulangerie", notes: "second achat" });
-    const groups = possibleDuplicates([a, b, cancelled, noted, expense("2026-10-04", 1_250, "chk", { label: "Boulangerie" })]);
-    expect(groups).toHaveLength(1);
-    expect(groups[0].map((t) => t.id)).toEqual([a.id, b.id]);
-  });
-
-  it("propose les opérations répétées avec leur dernier montant, sans les échéances récurrentes", () => {
-    const txs = [
-      expense("2026-10-10", 450, "chk", { label: "Café", categoryId: "cat-food" }),
-      expense("2026-10-02", 400, "chk", { label: "Café", categoryId: "cat-food" }),
-      expense("2026-10-05", 3_000, "chk", { label: "Courses", categoryId: "cat-food" }),
-      transfer("2026-10-01", 2_000, "chk", "liv", { label: "Vers Boursorama" }),
-      transfer("2026-10-08", 3_000, "chk", "liv", { label: "Vers Boursorama" }),
-      expense("2026-10-01", 1_500, "chk", { label: "Téléphone", recurrenceId: "r", occurrenceDate: "2026-10-01" }),
-      expense("2026-10-15", 1_500, "chk", { label: "Téléphone", recurrenceId: "r", occurrenceDate: "2026-10-15" }),
-      expense("2026-06-01", 999, "chk", { label: "Ancien" }),
-      expense("2026-06-02", 999, "chk", { label: "Ancien" }),
-    ];
-    const ops = frequentOperations(txs, "2026-07-01");
-    expect(ops.map((o) => [o.label, o.amountCents, o.count])).toEqual([
-      ["Café", 450, 2],
-      ["Vers Boursorama", 3_000, 2],
-    ]);
-    expect(ops[1]).toMatchObject({ kind: "transfer", accountId: "chk", toAccountId: "liv" });
   });
 });
 
@@ -247,197 +177,5 @@ describe("soldes", () => {
     const txs = [expense("2026-02-15", 2_500, "recent"), expense("2026-03-01", 1_000, "recent")];
     expect(balancesAt([recent], txs, "2026-03-31").get("recent")).toBe(9_000);
     expect(balancesAt([recent], txs, "2026-02-28").has("recent")).toBe(false);
-  });
-});
-
-describe("récurrences", () => {
-  it("ancre les échéances mensuelles sur le jour de début, bornées à la fin du mois", () => {
-    const r = rule({ kind: "expense", amountCents: 100, accountId: "chk", startDate: "2026-01-31" });
-    expect(occurrenceDates(r, "2026-01-01", "2026-05-31")).toEqual(["2026-01-31", "2026-02-28", "2026-03-31", "2026-04-30", "2026-05-31"]);
-  });
-
-  it("gère les fréquences en jours, trimestrielles, annuelles et la date de fin", () => {
-    expect(occurrenceDates({ frequency: "biweekly", startDate: "2026-01-05", endDate: null }, "2026-02-01", "2026-02-28")).toEqual([
-      "2026-02-02",
-      "2026-02-16",
-    ]);
-    expect(occurrenceDates({ frequency: "weekly", startDate: "2026-01-01", endDate: "2026-01-20" }, "2025-01-01", "2026-12-31")).toEqual([
-      "2026-01-01",
-      "2026-01-08",
-      "2026-01-15",
-    ]);
-    expect(occurrenceDates({ frequency: "quarterly", startDate: "2025-11-15", endDate: null }, "2026-06-01", "2026-12-31")).toEqual([
-      "2026-08-15",
-      "2026-11-15",
-    ]);
-    expect(occurrenceDates({ frequency: "annual", startDate: "2024-02-29", endDate: null }, "2025-01-01", "2028-12-31")).toEqual([
-      "2025-02-28",
-      "2026-02-28",
-      "2027-02-28",
-      "2028-02-29",
-    ]);
-    expect(occurrenceDates({ frequency: "daily", startDate: "2026-01-01", endDate: null }, "2026-01-30", "2026-02-02")).toHaveLength(4);
-  });
-
-  it("attribue un statut à chaque échéance sans jamais compter une échéance prévue comme effectuée", () => {
-    const r = rule({ kind: "expense", amountCents: 45_000, accountId: "chk", startDate: "2026-01-05", trackingStart: "2026-02-01" });
-    const realized = expense("2026-02-06", 45_000, "chk", { recurrenceId: r.id, occurrenceDate: "2026-02-05" });
-    const skipped = expense("2026-03-05", 45_000, "chk", {
-      recurrenceId: r.id,
-      occurrenceDate: "2026-03-05",
-      status: "cancelled",
-      confirmedAt: null,
-    });
-    const occ = listOccurrences(r, "2026-01-01", "2026-05-31", "2026-04-10", realizationIndex([realized, skipped]));
-    expect(occ.map((o) => [o.date, o.status])).toEqual([
-      ["2026-01-05", "untracked"],
-      ["2026-02-05", "realized"],
-      ["2026-03-05", "skipped"],
-      ["2026-04-05", "overdue"],
-      ["2026-05-05", "pending"],
-    ]);
-    const inactive = listOccurrences({ ...r, isActive: false }, "2026-01-01", "2026-05-31", "2026-04-10", realizationIndex([realized]));
-    expect(inactive.map((o) => o.status)).toEqual(["realized"]);
-  });
-
-  it("reporte au lundi une échéance du samedi ou du dimanche, sans changer sa clé", () => {
-    expect(["2026-11-13", "2026-11-14", "2026-11-15", "2026-11-16"].map((d) => nextBusinessDay(d))).toEqual([
-      "2026-11-13", // vendredi : inchangé
-      "2026-11-16", // samedi → lundi
-      "2026-11-16", // dimanche → lundi
-      "2026-11-16", // lundi : inchangé
-    ]);
-    const r = rule({ kind: "expense", amountCents: 2_160, accountId: "chk", startDate: "2026-11-14", trackingStart: "2026-11-01" });
-    const [first] = listOccurrences(r, "2026-11-01", "2026-11-30", "2026-11-15", realizationIndex([]));
-    // Samedi 14 → lundi 16 : le dimanche 15, l'échéance est encore à venir.
-    expect(first).toMatchObject({ date: "2026-11-14", dueDate: "2026-11-16", status: "pending" });
-    expect(nextDueDate(r, "2026-11-15")).toBe("2026-11-16");
-    expect(nextDueDate(r, "2026-11-17")).toBe("2026-12-14");
-  });
-
-  it("reporte aussi les jours fériés au jour ouvré suivant", () => {
-    expect(easterSunday(2026)).toBe("2026-04-05");
-    expect(easterSunday(2025)).toBe("2025-04-20");
-    // Abonnement du 25 : Noël 2025 (jeudi), 26 fermé (TARGET), week-end → lundi 29.
-    expect(nextBusinessDay("2025-12-25")).toBe("2025-12-29");
-    expect(nextBusinessDay("2026-05-01")).toBe("2026-05-04"); // vendredi 1er mai → lundi 4
-    expect(nextBusinessDay("2026-04-06")).toBe("2026-04-07"); // lundi de Pâques → mardi
-    expect(nextBusinessDay("2026-05-14")).toBe("2026-05-15"); // Ascension → vendredi
-    expect(nextBusinessDay("2026-04-03")).toBe("2026-04-07"); // Vendredi saint (TARGET) → mardi
-    expect(nextBusinessDay("2026-12-24")).toBe("2026-12-24"); // veille de Noël : jour ouvré
-    const ilevia = rule({ kind: "expense", amountCents: 3_000, accountId: "chk", startDate: "2025-01-25", trackingStart: "2025-01-01" });
-    const dec = listOccurrences(ilevia, "2025-12-01", "2025-12-31", "2026-01-10", realizationIndex([]));
-    expect(dec.map((o) => [o.date, o.dueDate])).toEqual([["2025-12-25", "2025-12-29"]]);
-
-    // Banque du compte fermée le lundi : le lundi 29 passe au mardi 30.
-    const secondaire = account("sec", "checking", 0, "2025-01-01", { closedWeekdays: [1] });
-    const closed = ruleClosedWeekdays({ ...ilevia, accountId: "sec" }, byId([secondaire]));
-    expect(closed).toEqual([1]);
-    const decSec = listOccurrences(ilevia, "2025-12-01", "2025-12-31", "2026-01-10", realizationIndex([]), closed);
-    expect(decSec.map((o) => o.dueDate)).toEqual(["2025-12-30"]);
-    expect(nextBusinessDay("2026-11-14", [1])).toBe("2026-11-17"); // samedi → mardi
-    expect(nextBusinessDay("2026-11-17", [1, 2, 3, 4, 5])).toBe("2026-11-17"); // garde-fou : jamais de boucle infinie
-  });
-
-  it("supprime une échéance et les suivantes, chemin de l'argent compris", () => {
-    const abo = rule({ kind: "expense", amountCents: 2_160, accountId: "chk", startDate: "2026-09-06", label: "Abonnement" });
-    const vir = rule({ kind: "transfer", amountCents: 2_160, accountId: "liv", toAccountId: "chk", startDate: "2026-09-05", fundedRuleId: abo.id });
-    const other = rule({ kind: "expense", amountCents: 500, accountId: "chk", startDate: "2026-09-01" });
-    const occ = (r: typeof abo, date: string) => expense(date, r.amountCents, "chk", { recurrenceId: r.id, occurrenceDate: date });
-    const txs = [occ(abo, "2026-10-06"), occ(abo, "2026-11-06"), occ(vir, "2026-10-05"), occ(vir, "2026-11-05"), occ(other, "2026-11-01")];
-    const [, aboNov, , virNov] = txs;
-
-    // Depuis l'échéance du 6 novembre : octobre reste, novembre et la suite disparaissent.
-    const plan = planStopFrom(abo, "2026-11-06", [abo, vir, other], txs);
-    expect(plan.transactionIds.sort()).toEqual([virNov.id, aboNov.id].sort());
-    expect(plan.endRules).toEqual([
-      { id: vir.id, endDate: "2026-11-04" },
-      { id: abo.id, endDate: "2026-11-05" },
-    ]);
-    expect(plan.deleteRuleIds).toEqual([]);
-
-    // Depuis la toute première échéance : plus rien ne reste, les règles sont supprimées (virement d'abord).
-    const all = planStopFrom(abo, "2026-09-06", [abo, vir, other], txs);
-    expect(all.deleteRuleIds).toEqual([vir.id, abo.id]);
-    expect(all.transactionIds).toHaveLength(4);
-    expect(all.endRules).toEqual([]);
-  });
-
-  it("calcule un équivalent mensuel", () => {
-    expect(monthlyEquivalentCents(1_000, "weekly")).toBe(4_333);
-    expect(monthlyEquivalentCents(12_000, "annual")).toBe(1_000);
-    expect(monthlyEquivalentCents(3_000, "quarterly")).toBe(1_000);
-  });
-});
-
-describe("budgets", () => {
-  it("utilise des périodes calendaires", () => {
-    expect(budgetPeriodRange("weekly", "2026-10-25")).toEqual({ start: "2026-10-19", end: "2026-10-25" });
-    expect(budgetPeriodRange("monthly", "2026-02-10")).toEqual({ start: "2026-02-01", end: "2026-02-28" });
-  });
-
-  it("ne compte que les dépenses confirmées de la catégorie et de la période", () => {
-    const txs = [
-      expense("2026-10-20", 3_000, "chk", { categoryId: "food" }),
-      expense("2026-10-21", 2_000, "chk", { categoryId: "food", status: "planned", confirmedAt: null }),
-      expense("2026-10-18", 1_000, "chk", { categoryId: "food" }),
-      expense("2026-10-22", 500, "chk", { categoryId: "fun" }),
-      tx("expense", "2026-10-23", 3_000, [["chk", -2_000], ["tr", -1_000]], { categoryId: "food" }),
-    ];
-    expect(spentInRange(txs, "food", budgetPeriodRange("weekly", "2026-10-21"))).toBe(6_000);
-  });
-
-  it("évalue consommation, projection et niveau d'alerte", () => {
-    const range = { start: "2026-10-19", end: "2026-10-25" };
-    const warning = evaluateBudget({ amountCents: 8_000, alertPct: 80, spentCents: 7_000, plannedCents: 0, range, today: "2026-10-21" });
-    expect(warning).toMatchObject({ level: "warning", consumedPct: 87.5, remainingCents: 1_000, projectionCents: 16_333, projectedOverrun: true });
-    const exceeded = evaluateBudget({ amountCents: 8_000, alertPct: 80, spentCents: 9_000, plannedCents: 0, range, today: "2026-10-25" });
-    expect(exceeded).toMatchObject({ level: "exceeded", remainingCents: -1_000 });
-    const ok = evaluateBudget({ amountCents: 8_000, alertPct: 80, spentCents: 1_000, plannedCents: 3_000, range, today: "2026-10-25" });
-    expect(ok).toMatchObject({ level: "ok", projectionCents: 4_000 });
-  });
-});
-
-describe("objectifs d'épargne", () => {
-  it("calcule progression, effort mensuel nécessaire et date estimée", () => {
-    const p = goalProgress({ targetCents: 100_000, accumulatedCents: 25_000, targetDate: "2027-04-25", monthlyContributionCents: 10_000, today: "2026-10-25" });
-    expect(p).toMatchObject({
-      remainingCents: 75_000,
-      pct: 25,
-      monthsLeft: 6,
-      neededPerMonthCents: 12_500,
-      estimatedDate: "2027-06-25",
-      onTrack: false,
-      achieved: false,
-    });
-    const done = goalProgress({ targetCents: 100, accumulatedCents: 150, targetDate: null, monthlyContributionCents: null, today: "2026-10-25" });
-    expect(done).toMatchObject({ achieved: true, remainingCents: 0 });
-    const noData = goalProgress({ targetCents: 100, accumulatedCents: 0, targetDate: null, monthlyContributionCents: null, today: "2026-10-25" });
-    expect(noData.estimatedDate).toBeNull();
-  });
-
-  it("n'ajoute jamais le montant d'un objectif aux soldes et détecte les affectations excessives", () => {
-    const base: Omit<SavingsGoal, "id" | "tracking" | "accountId"> = {
-      name: "g",
-      targetCents: 100_000,
-      targetDate: null,
-      monthlyContributionCents: null,
-      priority: 2,
-      achievedAt: null,
-      archivedAt: null,
-      notes: null,
-    };
-    const balances = new Map([["liv", 70_000]]);
-    expect(goalAccumulated({ id: "g0", tracking: "account", accountId: "liv" }, [], balances)).toBe(70_000);
-    expect(goalAccumulated({ id: "g0", tracking: "account", accountId: "liv" }, [], new Map([["liv", -10]]))).toBe(0);
-    const goals: SavingsGoal[] = [
-      { ...base, id: "g1", tracking: "manual", accountId: "liv" },
-      { ...base, id: "g2", tracking: "manual", accountId: "liv" },
-    ];
-    const allocations = [
-      { id: "a1", goalId: "g1", date: "2026-01-01", amountCents: 50_000, note: null },
-      { id: "a2", goalId: "g2", date: "2026-01-01", amountCents: 30_000, note: null },
-    ];
-    expect(overAllocatedAccounts(goals, allocations, balances)).toEqual([{ accountId: "liv", allocatedCents: 80_000, balanceCents: 70_000 }]);
   });
 });

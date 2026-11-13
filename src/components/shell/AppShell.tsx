@@ -1,6 +1,5 @@
 import { Suspense, type ReactNode } from "react";
 import { Navigation, NavigationFallback } from "./Navigation";
-import { SectionAlerts } from "./Notifications";
 import styles from "./shell.module.css";
 
 /** Ossature de l'application : navigation (latérale ou basse) et contenu. */
@@ -11,12 +10,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Navigation />
       </Suspense>
       <main className={styles.main} id="contenu">
-        <div className={styles.content}>
-          <Suspense fallback={null}>
-            <SectionAlerts />
-          </Suspense>
-          {children}
-        </div>
+        <div className={styles.content}>{children}</div>
       </main>
     </div>
   );

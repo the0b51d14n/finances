@@ -1,23 +1,18 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { BarList } from "@/components/charts/BarList";
-import { TransactionList } from "@/components/ledger/TransactionList";
+import { ExpenseForm, SalaryForm } from "@/components/forms/DashboardForms";
 import { Icon } from "@/components/ui/Icon";
-import { Amount, Badge, EmptyState, PageHeader, PageSkeleton } from "@/components/ui/primitives";
-import { addDays, formatDate, formatMonth } from "@/lib/dates";
+import { Amount, EmptyState, PageHeader, PageSkeleton } from "@/components/ui/primitives";
+import { formatDate, formatMonth } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
-import { computeDashboard } from "@/lib/domain/dashboard";
-import { CERTAINTY_LABELS } from "@/lib/view/labels";
+import { accountClass } from "@/lib/domain/accounts";
+import { SALARIES, computeDashboard, defaultExpenseAccount, salaryAccount } from "@/lib/domain/dashboard";
 import styles from "./dashboard.module.css";
-
-/** Échéances et revenus affichés dans « À venir ». */
-const UPCOMING_DAYS = 30;
-const UPCOMING_MAX = 8;
-const RECENT_COUNT = 5;
 
 export default function DashboardPage() {
   return (
-    <Suspense fallback={<PageSkeleton blocks={4} />}>
+    <Suspense fallback={<PageSkeleton blocks={3} />}>
       <Dashboard />
     </Suspense>
   );
@@ -25,157 +20,80 @@ export default function DashboardPage() {
 
 async function Dashboard() {
   const data = await loadFinanceData();
-  const categoriesById = new Map(data.categories.map((c) => [c.id, c]));
-  const categoryName = (id: string) => categoriesById.get(id)?.name ?? "Sans catégorie";
+  const accounts = data.accounts.filter((a) => !a.archivedAt);
 
-  if (!data.accounts.some((a) => !a.archivedAt)) {
+  if (accounts.length === 0) {
     return (
       <>
-        <PageHeader title="Bienvenue" subtitle={formatDate(data.today, "long")} />
+        <PageHeader title="Tableau de bord" subtitle={formatDate(data.today, "long")} />
         <div className="card">
           <EmptyState
             icon="wallet"
             title="Commencez par créer vos comptes"
             action={
               <Link href="/comptes/nouveau" className="btn btn-primary">
-                <Icon name="plus" size={16} /> Créer mon premier compte
+                <Icon name="plus" size={16} /> Créer un compte
               </Link>
             }
-          >
-            Indiquez pour chaque compte son solde à une date de référence. Programmez ensuite vos revenus et charges récurrents dans le
-            calendrier, puis saisissez vos opérations au fil de l&apos;eau. Aucune donnée d&apos;exemple n&apos;est créée.
-          </EmptyState>
+          />
         </div>
       </>
     );
   }
 
-  const d = computeDashboard({ ...data, categoryName });
-  const expenseRows = [...d.month.expenseByCategory.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 8)
-    .map(([id, cents]) => ({ key: id || "none", label: categoryName(id), cents }));
-
-  // Échéances et revenus des 30 prochains jours, dans l'ordre chronologique.
-  const upcomingEnd = addDays(data.today, UPCOMING_DAYS);
-  const upcoming = [...d.upcomingBills, ...d.upcomingIncomes.filter((e) => e.date <= upcomingEnd)]
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, UPCOMING_MAX);
-
-  // Dernières opérations saisies (hors prévues), pour vérifier la saisie du jour.
-  const accountsById = new Map(data.accounts.map((a) => [a.id, a]));
-  const recent = data.transactions.filter((t) => t.status === "confirmed").slice(0, RECENT_COUNT);
+  const d = computeDashboard(data);
+  const categoryName = new Map(data.categories.map((c) => [c.id, c.name]));
+  const expenseRows = d.expenses.map((e) => ({ key: e.categoryId || "none", label: categoryName.get(e.categoryId) ?? "Sans domaine", cents: e.cents }));
+  const expenseCategories = data.categories.filter((c) => c.kind === "expense" && !c.archivedAt).map((c) => ({ id: c.id, name: c.name }));
+  // Comptes qui peuvent payer une dépense (ni dette ni placement).
+  const payers = accounts.filter((a) => !["debt", "investment"].includes(accountClass(a.type))).map((a) => ({ id: a.id, name: a.name }));
+  const salaryTarget = salaryAccount(accounts);
+  const preferred = defaultExpenseAccount(accounts);
+  const defaultPayer = payers.find((p) => p.id === preferred?.id) ?? payers[0];
 
   return (
     <div className="stack">
-      <PageHeader
-        title="Tableau de bord"
-        subtitle={formatDate(data.today, "long")}
-        actions={
-          <>
-            <Link href="/operations/nouvelle?type=expense&retour=/" className="btn btn-primary">
-              <Icon name="arrowOut" size={16} /> Dépense
-            </Link>
-            <Link href="/operations/nouvelle?type=income&retour=/" className="btn">
-              <Icon name="arrowIn" size={16} /> Revenu
-            </Link>
-            <Link href="/operations/nouvelle?type=transfer&retour=/" className="btn">
-              <Icon name="swap" size={16} /> Virement
-            </Link>
-          </>
-        }
-      />
+      <PageHeader title="Tableau de bord" subtitle={formatDate(data.today, "long")} />
 
       <section className={styles.balances} aria-label="Soldes">
         <Link href="/comptes" className={`card ${styles.balance} ${styles.balanceMain}`}>
-          <span className="muted small">Argent disponible</span>
-          <Amount cents={d.totals.availableCents} className={styles.balanceValue} />
+          <span className="muted small">Total possédé</span>
+          <Amount cents={d.totalCents} className={styles.balanceValue} />
         </Link>
-        <Link href="/objectifs" className={`card ${styles.balance}`}>
-          <span className="muted small">Épargne totale</span>
-          <Amount cents={d.totals.savingsCents} className={styles.balanceValue} />
+        <Link href="/comptes" className={`card ${styles.balance}`}>
+          <span className="muted small">Épargne</span>
+          <Amount cents={d.savingsCents} className={styles.balanceValue} />
         </Link>
       </section>
 
-      <section className="card stack-sm">
+      <section className="card stack-sm" aria-labelledby="salaires">
         <div className="card-header">
-          <h2>Ce mois-ci</h2>
-          <Link href="/analyses" className="link small">
-            {formatMonth(data.today.slice(0, 7))}
-          </Link>
+          <h2 id="salaires">Salaires</h2>
+          {salaryTarget && <span className="faint small">{salaryTarget.name}</span>}
         </div>
-        <div className={styles.month}>
-          <div className={styles.figure}>
-            <span className="muted small">Revenus</span>
-            <Amount cents={d.month.incomeCents} signed className={styles.figureValue} />
-          </div>
-          <div className={styles.figure}>
-            <span className="muted small">Dépenses</span>
-            <Amount cents={-d.month.expenseCents} signed className={styles.figureValue} />
-          </div>
-          <div className={styles.figure}>
-            <span className="muted small">Solde net du mois</span>
-            <Amount cents={d.month.netCents} colored className={styles.figureValue} />
-          </div>
-        </div>
+        <ul className={styles.salaries}>
+          {SALARIES.map((s) => (
+            <li key={s.key} className={styles.salary}>
+              <div className={styles.salaryHead}>
+                <span className={styles.salaryName}>{s.label}</span>
+                {d.salaries[s.key] > 0 && <Amount cents={d.salaries[s.key]} className="pos small" />}
+              </div>
+              <SalaryForm salary={s.key} label={s.label} />
+            </li>
+          ))}
+        </ul>
       </section>
 
-      <div className="grid-2">
-        <section className="card">
-          <div className="card-header">
-            <h2>Dépenses par catégorie</h2>
-            <span className="faint small">Ce mois-ci</span>
-          </div>
-          {expenseRows.length === 0 ? (
-            <p className="muted small">Vos catégories apparaîtront ici dès que vous enregistrerez des dépenses.</p>
-          ) : (
-            <BarList rows={expenseRows} total={d.month.expenseCents} ariaLabel="Répartition des dépenses du mois" />
-          )}
-        </section>
-
-        {upcoming.length > 0 && (
-          <section className="card">
-            <div className="card-header">
-              <h2>À venir</h2>
-              <Link href="/calendrier" className="link small">
-                Voir le calendrier
-              </Link>
-            </div>
-            <ul className="list">
-              {upcoming.map((e, i) => {
-                const isIncome = e.deltaCents > 0;
-                return (
-                  <li key={i}>
-                    <span className="list-main">
-                      <span>{e.label}</span>
-                      <span className="faint tiny">
-                        {e.overdue ? `prévue le ${formatDate(e.originalDate, "short")}` : formatDate(e.date, "short")}
-                      </span>
-                    </span>
-                    <span className="row" style={{ gap: 6 }}>
-                      {isIncome && e.certainty !== "certain" && <Badge tone="estimate">{CERTAINTY_LABELS[e.certainty]}</Badge>}
-                      <Amount cents={isIncome ? e.grossCents : -e.grossCents} signed colored={isIncome} />
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        )}
-      </div>
-
-      {recent.length > 0 && (
-        <section className="card">
-          <div className="card-header">
-            <h2>Dernières opérations</h2>
-            <Link href="/operations" className="link small">
-              Toutes les opérations
-            </Link>
-          </div>
-          <TransactionList transactions={recent} accountsById={accountsById} categoriesById={categoriesById} />
-        </section>
-      )}
-
+      <section className="card stack-sm" aria-labelledby="depenses">
+        <div className="card-header">
+          <h2 id="depenses">Dépenses par domaine</h2>
+          <span className="faint small">
+            {formatMonth(data.today.slice(0, 7))} · <Amount cents={d.expenseTotalCents} />
+          </span>
+        </div>
+        {expenseRows.length > 0 && <BarList rows={expenseRows} total={d.expenseTotalCents} ariaLabel="Dépenses du mois par domaine" />}
+        <ExpenseForm categories={expenseCategories} accounts={payers} defaultAccountId={defaultPayer?.id ?? ""} />
+      </section>
     </div>
   );
 }

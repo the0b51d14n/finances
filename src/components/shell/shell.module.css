@@ -38,10 +38,6 @@
   font-weight: 800;
 }
 
-.quickAdd {
-  margin-bottom: 16px;
-}
-
 .navList {
   display: flex;
   flex-direction: column;
@@ -85,7 +81,7 @@
   bottom: 0;
   z-index: 40;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   align-items: center;
   height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
@@ -111,38 +107,6 @@
 
 .bottomItem[aria-current="page"] {
   color: var(--accent);
-}
-
-.fab {
-  justify-self: center;
-  display: grid;
-  place-items: center;
-  width: 52px;
-  height: 52px;
-  margin-top: -18px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-ink);
-  box-shadow: 0 6px 18px rgba(255, 122, 26, 0.35);
-}
-
-.sheetBackdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: flex-end;
-}
-
-.sheet {
-  width: 100%;
-  max-height: 85dvh;
-  overflow-y: auto;
-  background: var(--surface);
-  border-top-left-radius: 16px;
-  border-top-right-radius: 16px;
-  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
 }
 
 .offline {
@@ -181,8 +145,7 @@
     padding: 32px 36px 48px;
   }
 
-  .bottomNav,
-  .sheetBackdrop {
+  .bottomNav {
     display: none;
   }
 
@@ -191,32 +154,10 @@
   }
 }
 
-/* Pastille de notification (nombre de choses à faire dans l'onglet). */
-.badge {
-  margin-left: auto;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--negative);
-  color: #fff;
-  font-size: 0.72rem;
-  font-weight: 700;
-  line-height: 20px;
-  text-align: center;
-}
-
 .bottomItem {
   position: relative;
 }
 
-.bottomItem .badge {
-  position: absolute;
-  top: 4px;
-  left: calc(50% + 6px);
-  margin-left: 0;
-  min-width: 18px;
-  height: 18px;
-  line-height: 18px;
-  font-size: 0.66rem;
+.bottomForm {
+  display: contents;
 }

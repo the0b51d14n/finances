@@ -1,10 +1,13 @@
 # Finances personnelles
 
-Application web personnelle de gestion financière : comptes, opérations
-saisies manuellement, transferts, échéances récurrentes, budgets, aides et
-tickets-restaurant, objectifs d'épargne, prévisions jour par jour, simulateur
-d'achat et analyses mensuelles. Interface en français, en euros, installable
-sur iPhone (PWA).
+Application web personnelle de suivi des comptes, volontairement simple :
+
+- **Tableau de bord** : total possédé, épargne (livrets), salaires reçus
+  (alternance et Auchan, crédités sur le compte courant secondaire) et
+  graphique des dépenses du mois par domaine, avec saisie rapide d'une dépense.
+- **Comptes** : soldes, création, correction du solde, archivage.
+
+Interface en français, en euros, installable sur iPhone (PWA).
 
 - **Stack** : Next.js 16 (App Router, TypeScript strict), Neon PostgreSQL (pilote `@neondatabase/serverless`, sans ORM), CSS Modules, zod, Vitest.
 - **Règles de calcul** : [docs/REGLES-COMPTABLES.md](docs/REGLES-COMPTABLES.md).
@@ -94,14 +97,11 @@ src/components/        Interface (navigation, formulaires, graphiques)
 tests/                 Tests unitaires et d'intégration
 ```
 
-## Limites connues (V1)
+## Limites connues
 
 - Pas de connexion bancaire automatique (volontaire).
 - Pas de saisie hors ligne : l'application signale la perte de connexion ;
   les données restent sur Neon et sont synchronisées entre appareils.
-- La restauration d'une sauvegarde JSON exige un espace vide (pas de fusion) et
-  un fichier de 4 Mo au plus (limite des fonctions Vercel).
-- Alertes affichées dans l'application, sans notification push.
 - Pas de « mot de passe oublié » : relancer `npm run user:create` avec le même e-mail.
 - En offre gratuite, Neon met la base en veille après 5 minutes d'inactivité ;
   elle se réveille seule à la requête suivante (moins d'une seconde).

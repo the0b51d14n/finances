@@ -31,10 +31,6 @@ export type AccountClass = "available" | "savings" | "reserve" | "investment" | 
 export type TransactionKind = "expense" | "income" | "transfer" | "adjustment";
 export type TransactionStatus = "planned" | "confirmed" | "cancelled";
 export type CategoryKind = "expense" | "income";
-export type Frequency = "daily" | "weekly" | "biweekly" | "monthly" | "quarterly" | "semiannual" | "annual";
-export type Certainty = "certain" | "probable" | "uncertain";
-export type BudgetPeriod = "weekly" | "monthly";
-export type Priority = 1 | 2 | 3;
 
 export type Account = {
   id: string;
@@ -88,104 +84,8 @@ export type Transaction = {
   entries: Entry[];
 };
 
-export type RecurringRule = {
-  id: string;
-  kind: "expense" | "income" | "transfer";
-  label: string;
-  amountCents: Cents;
-  accountId: string;
-  toAccountId: string | null;
-  categoryId: string | null;
-  frequency: Frequency;
-  startDate: IsoDate;
-  endDate: IsoDate | null;
-  trackingStart: IsoDate;
-  certainty: Certainty;
-  isActive: boolean;
-  /** Montant variable (salaire avec heures sup…) : l'accueil demande de confirmer le montant reçu. */
-  variableAmount: boolean;
-  notes: string | null;
-  /** Virement du chemin de l'argent : la dépense récurrente qu'il alimente. */
-  fundedRuleId: string | null;
-};
-
-export type Budget = {
-  id: string;
-  categoryId: string;
-  period: BudgetPeriod;
-  amountCents: Cents;
-  alertPct: number | null;
-  isActive: boolean;
-};
-
-export type SavingsGoal = {
-  id: string;
-  name: string;
-  targetCents: Cents;
-  targetDate: IsoDate | null;
-  monthlyContributionCents: Cents | null;
-  priority: Priority;
-  tracking: "manual" | "account";
-  accountId: string | null;
-  achievedAt: string | null;
-  archivedAt: string | null;
-  notes: string | null;
-};
-
-export type GoalAllocation = {
-  id: string;
-  goalId: string;
-  date: IsoDate;
-  amountCents: Cents;
-  note: string | null;
-};
-
-export type PurchasePlan = {
-  id: string;
-  name: string;
-  priceCents: Cents;
-  desiredDate: IsoDate | null;
-  priority: Priority;
-  url: string | null;
-  notes: string | null;
-  goalId: string | null;
-  status: "active" | "purchased" | "abandoned";
-  /** Date limite : l'achat doit être fait au plus tard ce jour-là. */
-  deadline: IsoDate | null;
-  /** Projet regroupant plusieurs achats (ex. « Emménagement »). */
-  project: string | null;
-  /** Compte qui paiera l'achat (par défaut : compte de dépenses courantes). */
-  accountId: string | null;
-  categoryId: string | null;
-};
-
 export type UserSettings = {
-  currency: string;
   theme: "dark" | "light" | "system";
-  safetyReserveCents: Cents;
-  budgetAlertPct: number;
-  billReminderDays: number;
-  comparisonMonths: number;
-  forecastIncludeProbable: boolean;
-  preserveBudgetsInForecast: boolean;
-  notifyBudgetAlerts: boolean;
-  notifyUpcomingBills: boolean;
-  notifyLowBalance: boolean;
-  /** Compte de dépenses courantes (achats, enveloppes budgétaires, virements conseillés). */
-  spendingAccountId: string | null;
 };
 
-export const DEFAULT_SETTINGS: UserSettings = {
-  currency: "EUR",
-  theme: "dark",
-  safetyReserveCents: 0,
-  budgetAlertPct: 80,
-  billReminderDays: 7,
-  comparisonMonths: 6,
-  forecastIncludeProbable: false,
-  preserveBudgetsInForecast: false,
-  notifyBudgetAlerts: true,
-  notifyUpcomingBills: true,
-  notifyLowBalance: true,
-  spendingAccountId: null,
-};
+export const DEFAULT_SETTINGS: UserSettings = { theme: "dark" };

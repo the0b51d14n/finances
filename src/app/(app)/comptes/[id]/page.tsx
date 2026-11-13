@@ -1,18 +1,16 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { archiveAccountAction, deleteAccountAction } from "@/app/actions/ledger";
 import { AccountForm, AdjustBalanceForm } from "@/components/forms/AccountForms";
-import { TransactionList } from "@/components/ledger/TransactionList";
 import { ActionButton } from "@/components/ui/forms";
 import { Icon } from "@/components/ui/Icon";
-import { Badge, Notice, PageHeader, PageSkeleton, StatTile } from "@/components/ui/primitives";
+import { Notice, PageHeader, PageSkeleton, StatTile } from "@/components/ui/primitives";
 import { formatDate } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
 import { accountKindLabel, accountSubtype } from "@/lib/domain/account-kinds";
-import { ACCOUNT_CLASS_LABELS, accountClass, balancesAt, countsInBalance, hasExpiry, isExhausted } from "@/lib/domain/accounts";
-import { centsToInput, formatCents } from "@/lib/money";
+import { ACCOUNT_CLASS_LABELS, accountClass, balancesAt, hasExpiry, isExhausted } from "@/lib/domain/accounts";
+import { centsToInput } from "@/lib/money";
 
 export const metadata: Metadata = { title: "Compte" };
 
@@ -37,26 +35,8 @@ async function AccountDetail({
   const account = data.accounts.find((a) => a.id === id);
   if (!account) notFound();
 
-  const accountsById = new Map(data.accounts.map((a) => [a.id, a]));
-  const categoriesById = new Map(data.categories.map((c) => [c.id, c]));
   const balance = balancesAt(data.accounts, data.transactions, data.today).get(account.id) ?? account.openingBalanceCents;
   const related = data.transactions.filter((tx) => tx.entries.some((e) => e.accountId === account.id));
-  const planned = related.filter((tx) => tx.status === "planned");
-  const history = related.filter((tx) => tx.status === "confirmed");
-  const beforeOpening = related.filter((tx) => tx.status === "confirmed" && tx.date < account.openingBalanceDate);
-
-  // Solde après chaque opération comptabilisée (ordre chronologique).
-  const running = new Map<string, number>();
-  let acc = account.openingBalanceCents;
-  for (const tx of [...history].reverse()) {
-    if (!countsInBalance(account, tx)) continue;
-    acc += tx.entries.find((e) => e.accountId === account.id)?.amountCents ?? 0;
-    running.set(tx.id, acc);
-  }
-
-  const credits = history.filter((tx) => tx.status === "confirmed").reduce((s, tx) => s + Math.max(0, tx.entries.find((e) => e.accountId === account.id)!.amountCents), 0);
-  const debits = history.filter((tx) => tx.status === "confirmed").reduce((s, tx) => s + Math.min(0, tx.entries.find((e) => e.accountId === account.id)!.amountCents), 0);
-  const isVoucher = account.type === "meal_voucher";
   const exhausted = isExhausted(account, balance);
 
   return (
@@ -65,68 +45,23 @@ async function AccountDetail({
         title={account.name}
         subtitle={`${account.institution ? `${account.institution} · ` : ""}${accountKindLabel(account)} · ${ACCOUNT_CLASS_LABELS[accountClass(account.type)]}`}
         back={{ href: "/comptes", label: "Comptes" }}
-        actions={
-          !account.archivedAt && (
-            <Link href={`/operations/nouvelle?compte=${account.id}&retour=/comptes/${account.id}`} className="btn btn-primary">
-              <Icon name="plus" size={16} /> Opération
-            </Link>
-          )
-        }
       />
 
       {account.archivedAt && (
         <Notice tone="info" title={exhausted ? "Épuisé" : "Compte archivé"}>
           {exhausted
-            ? `Solde à 0 € le ${formatDate(account.archivedAt.slice(0, 10))} : ne se recharge pas, il a été retiré automatiquement. Les dépenses payées avec restent dans l'historique et les analyses.`
-            : `Archivé le ${formatDate(account.archivedAt.slice(0, 10))}. Son historique est conservé et reste pris en compte dans les analyses passées.`}
+            ? `Solde à 0 € le ${formatDate(account.archivedAt.slice(0, 10))} : retiré automatiquement.`
+            : `Archivé le ${formatDate(account.archivedAt.slice(0, 10))}.`}
         </Notice>
       )}
-      {beforeOpening.length > 0 && (
-        <Notice tone="warning" title={`${beforeOpening.length} opération(s) antérieure(s) au solde initial`}>
-          Elles sont datées avant le {formatDate(account.openingBalanceDate)} et n&apos;affectent donc pas le solde (réputées déjà incluses dans le solde
-          initial). Elles restent comptées dans les analyses mensuelles.
-        </Notice>
-      )}
-
       <section className="grid-stats">
         <StatTile label="Solde actuel" cents={balance} nature="actual" emphasis tone="auto" />
-        <StatTile label="Solde initial" cents={account.openingBalanceCents} hint={`au début du ${formatDate(account.openingBalanceDate)}`} />
-        <StatTile label={isVoucher ? "Crédits reçus" : "Entrées effectuées"} cents={credits} />
-        <StatTile label={isVoucher ? "Dépenses en tickets" : "Sorties effectuées"} cents={-debits} />
       </section>
       {hasExpiry(account.type) && account.validUntil && (
         <p className={account.validUntil < data.today ? "neg small" : "muted small"}>
           {account.validUntil < data.today ? "Expiré depuis le" : "Valable jusqu'au"} {formatDate(account.validUntil)}.
         </p>
       )}
-
-      {planned.length > 0 && (
-        <section className="card">
-          <div className="card-header">
-            <h2>Opérations prévues</h2>
-            <Badge tone="forecast">Non comptées dans le solde</Badge>
-          </div>
-          <TransactionList transactions={planned} accountsById={accountsById} categoriesById={categoriesById} accountId={account.id} />
-        </section>
-      )}
-
-      <section className="card">
-        <div className="card-header">
-          <h2>Historique des mouvements</h2>
-          <Link href={`/operations?compte=${account.id}`} className="link small">
-            Filtrer dans Opérations
-          </Link>
-        </div>
-        <TransactionList
-          transactions={history.slice(0, 150)}
-          accountsById={accountsById}
-          categoriesById={categoriesById}
-          accountId={account.id}
-          runningBalances={running}
-          emptyText="Aucun mouvement enregistré sur ce compte."
-        />
-        {history.length > 150 && <p className="faint small">Seuls les 150 mouvements les plus récents sont affichés ici.</p>}
-      </section>
 
       {!account.archivedAt && (
         <section className="card" id="corriger">
@@ -157,7 +92,6 @@ async function AccountDetail({
               validUntil: account.validUntil ?? "",
               institution: account.institution ?? "",
               notes: account.notes ?? "",
-              closedWeekdays: account.closedWeekdays,
             }}
             institutions={[...new Set(data.accounts.map((a) => a.institution).filter((i): i is string => !!i))]}
           />
@@ -183,7 +117,7 @@ async function AccountDetail({
       </section>
       {related.length > 0 && (
         <p className="faint tiny">
-          Un compte utilisé ne peut pas être supprimé (historique à préserver) : archivez-le. Solde actuel : {formatCents(balance)}.
+          Un compte qui a des mouvements ne peut pas être supprimé : archivez-le.
         </p>
       )}
     </div>

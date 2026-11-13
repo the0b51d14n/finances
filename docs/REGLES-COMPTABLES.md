@@ -32,15 +32,11 @@ et `delete_transaction`, atomiques et auditées.
 
 ## 3. Statuts
 
-Il n'existe **aucune étape de confirmation** : le statut découle de la date.
-
-- **Effectuée** (`confirmed`) : date aujourd'hui ou passée. Elle compte dans les
-  soldes et les analyses. Elle ne peut pas être datée dans le futur.
-- **À venir** (`planned`) : date future. Elle n'a aucun effet sur les soldes ni
-  sur les analyses ; elle alimente uniquement les prévisions. Dès que sa date est
-  atteinte, elle devient automatiquement effectuée, à sa date.
-- **Annulée / ignorée** (`cancelled`) : conservée pour l'historique, sans aucun
-  effet (échéance récurrente supprimée).
+Il n'existe **aucune étape de confirmation** : toute opération saisie (salaire,
+dépense, ajustement) est **effectuée** (`confirmed`) et datée du jour ; elle
+compte aussitôt dans les soldes. Les statuts `planned` (à venir) et `cancelled`
+(annulée) existent encore en base pour l'historique mais ne sont plus créés et
+n'ont aucun effet sur les soldes.
 
 ## 4. Comptes et soldes
 
@@ -103,27 +99,24 @@ les totaux calculés) :
 | Tickets-restaurant | non        | non     | non              | non            | interdit      | non       |
 | Avantage affecté   | non        | non     | non              | non            | interdit      | non       |
 
-## 5. Indicateurs
+## 5. Indicateurs du tableau de bord
 
-Le tableau de bord se limite à l'argent disponible (avec le reste à vivre),
-l'épargne totale, le résumé du mois, les dépenses par catégorie et les
-mouvements à venir. Total des soldes, dettes et ressources affectées sont sur
-la page Comptes ; réservé aux échéances et reste à vivre détaillés sur la page
-Prévisions.
+- **Total possédé** = somme des soldes de tous les comptes actifs : disponible,
+  épargne, réserves, placements et ressources affectées (cartes cadeaux…),
+  dettes déduites. Les comptes archivés n'y figurent pas.
+- **Épargne** = soldes des livrets et comptes d'épargne spécifique (Livret A,
+  Livret Jeune…).
+- **Salaires** : deux lignes fixes, « Salaire alternance » et « Salaire Auchan ».
+  Le montant saisi est enregistré comme un revenu effectué du jour, crédité sur
+  le compte courant secondaire (à défaut, le premier compte courant). Le montant
+  affiché est la somme reçue sur le mois en cours pour cette ligne.
+- **Dépenses par domaine** = dépenses effectuées du mois calendaire en cours,
+  regroupées par catégorie. Une dépense saisie depuis le tableau de bord est
+  datée du jour et payée par le compte choisi (par défaut le compte courant
+  principal).
 
-- **Total des soldes** = disponible + épargne + réserves + placements (hors
-  ressources affectées et dettes).
-- **Dettes** = somme des soldes des crédits et dettes (≤ 0) ; **patrimoine net**
-  = total des soldes + dettes.
-- **Argent disponible** = soldes des comptes courants et espèces.
-- **Épargne totale** = soldes des livrets et comptes d'épargne spécifique.
-- **Affecté aux objectifs** : part des soldes réservée aux objectifs, jamais ajoutée.
-- **Réservé aux échéances** = sorties programmées sur le disponible (échéances
-  récurrentes non réalisées + opérations prévues) d'aujourd'hui jusqu'à la veille
-  du prochain revenu **certain**, ou sur 30 jours s'il n'y en a pas.
-- **Reste jusqu'au prochain revenu** = disponible − réservé − réserve de sécurité.
-- **Revenus / dépenses du mois** = opérations effectuées du mois calendaire.
-- Chaque tuile indique sa nature : *Constaté*, *Estimé* ou *Prévision*.
+Pour les tickets-restaurant, cartes cadeaux et bons d'achat, une dépense ne peut
+pas dépasser le solde restant.
 
 ## 6. Transferts
 
@@ -142,175 +135,7 @@ depuis un portefeuille de tickets-restaurant sont interdits.
 - Les analyses affichent la dépense totale et précisent « dont X € en tickets ».
 - L'éligibilité d'un achat aux tickets n'est jamais supposée : c'est un choix de saisie.
 
-## 8. Récurrences et échéances
-
-- Les occurrences sont calculées, pas stockées. Les échéances mensuelles gardent
-  le jour de la date de début, borné à la fin du mois (31 → 28/29/30).
-- **Enregistrement automatique** : dès que sa date est atteinte (le jour même),
-  une échéance suivie est enregistrée comme opération effectuée liée
-  `(règle, date prévue)`, au montant de la règle et à la date de l'échéance
-  (au chargement des données ; voir `src/lib/domain/realization.ts`). Le lien
-  est unique en base : impossible de l'enregistrer deux fois. Le montant réel se
-  corrige en modifiant l'opération ; l'estimation reste conservée à part
-  (`expected_amount_cents`).
-- **Supprimer** une échéance enregistrée la marque « ignorée » (opération
-  annulée liée, trace conservée) : elle n'est pas réenregistrée, les suivantes
-  restent prévues.
-- Une règle suspendue, ou dont un compte est archivé, n'enregistre rien. Les
-  échéances antérieures à la date de **début de suivi** de la règle sont « hors
-  suivi » (réputées incluses dans les soldes initiaux) et ne sont jamais enregistrées.
-- Modifier une règle ne réécrit jamais l'historique ; l'option « appliquer à
-  partir du » arrête la règle la veille et crée une nouvelle règle.
-
-## 9. Budgets
-
-- Périodes calendaires : semaine du **lundi au dimanche**, mois calendaire.
-- **Dépensé** = dépenses effectuées de la catégorie dans la période (montant
-  total, tickets compris). Chaque opération n'appartient qu'à une catégorie et
-  une période.
-- **Programmé** = opérations prévues + échéances non réalisées de la catégorie
-  dans la période, affiché séparément.
-- **Projection** = max(dépensé + programmé, rythme actuel prolongé à la fin de la période).
-- Alerte à partir du seuil (80 % par défaut), dépassement au-delà de 100 %.
-
-## 10. Revenus estimés et certitude
-
-Chaque revenu récurrent a un niveau de certitude :
-
-- **Certain** : compté dans tous les scénarios ;
-- **Probable** : compté uniquement dans le scénario « estimé » ;
-- **Incertain** : jamais compté, seulement affiché.
-
-Un revenu ponctuel « prévu » est considéré comme probable. Les sorties d'argent
-sont toujours comptées (prudence).
-
-## 11. Prévisions
-
-> L'affichage des prévisions (courbe du solde, mouvements prévus, alertes de
-> découvert, virements conseillés sur l'accueil) a été retiré : il ne servait
-> pas. Le calcul ci-dessous est conservé uniquement pour le **simulateur
-> d'achat** et les **achats planifiés** (meilleur moment pour acheter).
-
-Le solde **disponible** est projeté jour par jour, dans l'ordre chronologique,
-à partir du disponible constaté aujourd'hui et des mouvements à venir (effet sur
-le disponible uniquement). Les échéances échues étant enregistrées
-automatiquement, seules les échéances futures (et celles d'une règle dont un
-compte est archivé, reportées à aujourd'hui) figurent dans les mouvements à venir. Option « préserver les budgets » : pour chaque période, l'enveloppe
-restante (budget − dépensé − déjà programmé, jamais négative) est réservée au
-début de la période ; si une catégorie a un budget hebdomadaire et mensuel,
-seul l'hebdomadaire est utilisé.
-
-## 12. Simulateur d'achat
-
-Un achat de prix P à la date D est :
-
-- **compatible** si, dans le scénario garanti, le disponible reste ≥ réserve de
-  sécurité chaque jour de [D ; D + 62 jours] après déduction de P ;
-- **possible avec marge réduite** s'il reste ≥ 0 mais entame la réserve, ou s'il
-  n'est compatible qu'avec les revenus probables ;
-- **à reporter** sinon ; la première date compatible dans les 12 mois est proposée ;
-- **impossible à établir** sans compte disponible, au-delà de l'horizon, ou si
-  aucun revenu certain n'est programmé et qu'aucune date ne convient.
-
-C'est une aide à la décision budgétaire, pas une garantie de solvabilité.
-
-## 12 bis. Calendrier d'une liste d'achats (page « Achats planifiés »)
-
-Pour une liste d'achats (ex. équiper un logement non meublé), les achats sont
-traités par **priorité**, puis **date limite**, puis date « pas avant », puis
-ordre de saisie. Chacun est placé au **premier jour** où le disponible des
-comptes courants (scénario garanti) reste ≥ réserve de sécurité :
-
-- sur les 62 jours suivant cet achat ;
-- et jusqu'à la fin des fenêtres de contrôle des achats déjà placés.
-
-Les achats sont **cumulés** : la même marge n'est jamais comptée deux fois, et un
-nouvel achat ne peut pas compromettre un achat précédent. Un achat placé après
-sa date limite est signalé, avec la somme qui manquerait pour l'acheter à cette
-date. Un achat sans date possible dans les 12 mois est « hors de portée ».
-Les livrets ne sont jamais utilisés. Enregistrer la dépense correspondante
-(même datée dans le futur) retire l'achat de la liste.
-
-## 12 bis b. Chemin de l'argent d'une dépense ponctuelle
-
-Option de la saisie d'une **nouvelle dépense ponctuelle** (pas les échéances,
-déjà prévues par les récurrences). Organisation visée : le courant **principal**
-paie les dépenses courantes, le courant **secondaire** reçoit les salaires et
-porte les prélèvements, l'**épargne** complète.
-
-- Le compte qui paie est projeté (scénario garanti) jusqu'à 31 jours après la
-  dépense, dépense et échéances comprises. S'il suffit : aucun virement.
-- Sinon le manque est couvert d'abord par le **secondaire** (compte courant qui
-  reçoit une échéance de revenu active ; à défaut celui de la même banque qu'un
-  livret, sinon l'autre compte courant), sans entamer ce qu'il doit garder pour
-  ses prélèvements sur la période : secondaire → principal.
-- Le reste vient de l'**épargne** (livrets, puis épargne dédiée), sans la rendre
-  négative, en passant par le secondaire : épargne → secondaire → principal.
-  Sans autre compte courant, le virement est direct.
-- Montants arrondis aux 10 € supérieurs quand les sources le permettent ; la
-  part non couverte est signalée. Dates : virement final la veille de la
-  dépense, étape précédente l'avant-veille, jamais avant aujourd'hui.
-- Le chemin proposé est modifiable (ajout, retrait, comptes, montants, dates).
-  Les virements et la dépense sont enregistrés **dans une seule transaction**
-  (tout ou rien) ; chaque virement compte à sa date, comme toute opération.
-  Une double soumission ne recrée rien (identifiants de requête dérivés).
-
-## 12 ter. Virements conseillés entre comptes courants
-
-Chaque compte courant est projeté séparément sur la période à venir (scénario
-garanti, achats planifiés compris sur la page Achats). Si un compte passerait à
-découvert, un virement est proposé depuis le compte courant qui garde la plus
-grande marge, sans jamais rendre ce dernier négatif. Le montant est arrondi aux
-10 € supérieurs quand c'est possible, et le virement est à faire au plus tard la
-veille du découvert prévu. Si aucun compte ne peut couvrir le manque, une alerte
-le signale. Les enveloppes budgétaires et les achats sans compte précisé sont
-imputés au **compte de dépenses courantes** choisi dans les Paramètres.
-
-## 12 quater. Saisie rapide, doublons et sauvegardes
-
-- **Saisie rapide** : les opérations effectuées répétées au moins deux fois sur
-  120 jours (même type, libellé, catégorie et compte, hors échéances
-  récurrentes) sont proposées comme modèles, avec le dernier montant saisi.
-- **Doublons possibles** : opérations non annulées de même type, date, montant,
-  libellé (casse ignorée), note et écritures, sur 90 jours. Un simple
-  signalement : rien n'est supprimé automatiquement ; une note distingue deux
-  opérations identiques légitimes.
-- **Restauration** : une sauvegarde JSON est revérifiée champ par champ, puis
-  importée en une seule transaction SQL, uniquement dans un espace vide, avec de
-  nouveaux identifiants ; au moindre écart (écritures déséquilibrées, référence
-  manquante), rien n'est importé.
-
-## 13. Objectifs d'épargne
-
-Un objectif **affecte** une partie de l'argent déjà présent : il ne s'ajoute
-jamais aux soldes. Suivi « compte dédié » : accumulé = solde du compte (≥ 0).
-Suivi « manuel » : accumulé = somme des affectations. Une alerte signale des
-affectations supérieures au solde du compte associé.
-
-- Progression = accumulé / cible ; reste = max(0, cible − accumulé).
-- Nécessaire par mois = reste / mois entiers jusqu'à la date cible (minimum 1).
-- Date estimée = aujourd'hui + ⌈reste / contribution mensuelle⌉ mois.
-
-## 14. Analyses mensuelles
-
-- Revenus, dépenses : opérations effectuées du mois ; transferts et ajustements exclus.
-- Solde net = revenus − dépenses ; taux d'épargne = solde net / revenus
-  (non calculable si revenus nuls).
-- **Différence** = montant actuel − montant de référence ; **variation %** =
-  différence / référence × 100, seulement si la référence est > 0. Sinon :
-  « Nouvelle dépense » / « Nouveau revenu » (référence nulle) ou « Non calculable ».
-- Références possibles : mois précédent complet, même période du mois précédent
-  (mois en cours, du 1er au même jour), moyenne des mois renseignés sur N mois.
-- Le mois en cours est marqué **provisoire**. Les échéances attendues mais non
-  comptabilisées, ou comptabilisées un autre mois, sont signalées pour ne pas
-  confondre un prélèvement décalé avec une économie.
-- Évolution de l'épargne : variation réelle = soldes initiaux de nouveaux comptes
-  + versements nets (transferts depuis/vers des comptes hors épargne) + intérêts
-  + autres revenus − dépenses payées par l'épargne + ajustements.
-- Le bilan automatique n'émet que des constats calculés (règles et seuils dans
-  `src/lib/domain/insights.ts`).
-
-## 15. Dates
+## 8. Dates
 
 Les dates d'opération sont des jours civils (`AAAA-MM-JJ`). Le « jour courant »
 est déterminé dans le fuseau **Europe/Paris** ; toute l'arithmétique de dates se

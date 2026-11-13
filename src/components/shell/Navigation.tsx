@@ -2,10 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { signOutAction } from "@/app/actions/auth";
 import { Icon, type IconName } from "@/components/ui/Icon";
-import { useAlertCounts } from "./Notifications";
 import styles from "./shell.module.css";
 
 type NavItem = { href: string; label: string; icon: IconName };
@@ -13,21 +12,6 @@ type NavItem = { href: string; label: string; icon: IconName };
 const SECTIONS: NavItem[] = [
   { href: "/", label: "Tableau de bord", icon: "home" },
   { href: "/comptes", label: "Comptes", icon: "wallet" },
-  { href: "/operations", label: "Opérations", icon: "list" },
-  { href: "/budget", label: "Budget", icon: "pie" },
-  { href: "/calendrier", label: "Calendrier", icon: "calendar" },
-  { href: "/analyses", label: "Analyses mensuelles", icon: "chart" },
-  { href: "/objectifs", label: "Épargne et objectifs", icon: "target" },
-  { href: "/ressources", label: "Ressources et avantages", icon: "gift" },
-  { href: "/previsions", label: "Simulateur d'achat", icon: "trend" },
-  { href: "/achats", label: "Achats planifiés", icon: "cart" },
-  { href: "/parametres", label: "Paramètres", icon: "settings" },
-];
-
-const MOBILE_PRIMARY: NavItem[] = [
-  { href: "/", label: "Accueil", icon: "home" },
-  { href: "/operations", label: "Opérations", icon: "list" },
-  { href: "/previsions", label: "Simulateur", icon: "trend" },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -65,31 +49,7 @@ export function NavigationFallback() {
   return <NavigationView pathname="" />;
 }
 
-/** Pastille de notification : nombre de choses à faire ou à voir dans l'onglet. */
-function Badge({ count, label }: { count: number; label: string }) {
-  if (count <= 0) return null;
-  return (
-    <span className={styles.badge} aria-label={`${count} notification${count > 1 ? "s" : ""} : ${label}`}>
-      {count}
-    </span>
-  );
-}
-
 function NavigationView({ pathname }: { pathname: string }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const counts = useAlertCounts();
-  const countOf = (href: string) => counts.get(href) ?? 0;
-  // Bouton « Menu » (mobile) : notifications des onglets absents de la barre basse.
-  const menuCount = SECTIONS.filter((s) => !MOBILE_PRIMARY.some((m) => m.href === s.href)).reduce((n, s) => n + countOf(s.href), 0);
-  const quickAdd = `/operations/nouvelle?retour=${encodeURIComponent(pathname)}`;
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [menuOpen]);
-
   return (
     <>
       <OfflineBanner />
@@ -102,20 +62,11 @@ function NavigationView({ pathname }: { pathname: string }) {
           </span>
           Finances
         </Link>
-        <Link href={quickAdd} className={`btn btn-primary btn-block ${styles.quickAdd}`}>
-          <Icon name="plus" size={16} /> Ajouter une opération
-        </Link>
         <nav className={styles.navList}>
           {SECTIONS.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={styles.navItem}
-              aria-current={isActive(pathname, item.href) ? "page" : undefined}
-            >
+            <Link key={item.href} href={item.href} className={styles.navItem} aria-current={isActive(pathname, item.href) ? "page" : undefined}>
               <Icon name={item.icon} />
               {item.label}
-              <Badge count={countOf(item.href)} label={item.label} />
             </Link>
           ))}
         </nav>
@@ -126,64 +77,21 @@ function NavigationView({ pathname }: { pathname: string }) {
         </form>
       </aside>
 
-      {/* Mobile : barre basse avec ajout rapide central */}
+      {/* Mobile : barre basse */}
       <nav className={styles.bottomNav} aria-label="Navigation principale">
-        {MOBILE_PRIMARY.slice(0, 2).map((item) => (
+        {SECTIONS.map((item) => (
           <Link key={item.href} href={item.href} className={styles.bottomItem} aria-current={isActive(pathname, item.href) ? "page" : undefined}>
             <Icon name={item.icon} size={22} />
-            <span>{item.label}</span>
-            <Badge count={countOf(item.href)} label={item.label} />
+            <span>{item.label === "Tableau de bord" ? "Accueil" : item.label}</span>
           </Link>
         ))}
-        <Link href={quickAdd} className={styles.fab} aria-label="Ajouter une opération">
-          <Icon name="plus" size={26} />
-        </Link>
-        {MOBILE_PRIMARY.slice(2).map((item) => (
-          <Link key={item.href} href={item.href} className={styles.bottomItem} aria-current={isActive(pathname, item.href) ? "page" : undefined}>
-            <Icon name={item.icon} size={22} />
-            <span>{item.label}</span>
-            <Badge count={countOf(item.href)} label={item.label} />
-          </Link>
-        ))}
-        <button type="button" className={styles.bottomItem} onClick={() => setMenuOpen(true)} aria-expanded={menuOpen} aria-controls="menu-mobile">
-          <Icon name="menu" size={22} />
-          <span>Menu</span>
-          <Badge count={menuCount} label="autres onglets" />
-        </button>
+        <form action={signOutAction} className={styles.bottomForm}>
+          <button type="submit" className={styles.bottomItem}>
+            <Icon name="logout" size={22} />
+            <span>Quitter</span>
+          </button>
+        </form>
       </nav>
-
-      {menuOpen && (
-        <div className={styles.sheetBackdrop} onClick={() => setMenuOpen(false)}>
-          <div id="menu-mobile" className={styles.sheet} role="dialog" aria-modal="true" aria-label="Menu" onClick={(e) => e.stopPropagation()}>
-            <div className="row-between" style={{ marginBottom: 8 }}>
-              <strong>Menu</strong>
-              <button type="button" className="btn btn-ghost" onClick={() => setMenuOpen(false)} aria-label="Fermer le menu">
-                <Icon name="x" />
-              </button>
-            </div>
-            <nav className={styles.navList}>
-              {SECTIONS.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={styles.navItem}
-                  aria-current={isActive(pathname, item.href) ? "page" : undefined}
-                  onClick={() => setMenuOpen(false)}
-                >
-                  <Icon name={item.icon} />
-                  {item.label}
-                  <Badge count={countOf(item.href)} label={item.label} />
-                </Link>
-              ))}
-            </nav>
-            <form action={signOutAction} style={{ marginTop: 8 }}>
-              <button type="submit" className="btn btn-ghost btn-block" style={{ justifyContent: "flex-start" }}>
-                <Icon name="logout" /> Se déconnecter
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
     </>
   );
 }

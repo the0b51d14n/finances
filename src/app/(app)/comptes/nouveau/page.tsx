@@ -25,7 +25,7 @@ async function NewAccount() {
       <AccountForm
         openingLocked={false}
         institutions={institutions}
-        initial={{ name: "", subtype: "current", openingBalance: "0,00", openingBalanceDate: data.today, validUntil: "", institution: "", notes: "", closedWeekdays: [] }}
+        initial={{ name: "", subtype: "current", openingBalance: "0,00", openingBalanceDate: data.today, validUntil: "", institution: "", notes: "" }}
       />
     </div>
   );

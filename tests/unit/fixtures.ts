@@ -1,14 +1,5 @@
 /** Constructeurs de données synthétiques pour les tests unitaires. */
-import type {
-  Account,
-  AccountType,
-  Budget,
-  Category,
-  RecurringRule,
-  Transaction,
-  TransactionKind,
-  TransactionStatus,
-} from "@/lib/domain/types";
+import type { Account, AccountType, Category, Transaction, TransactionKind, TransactionStatus } from "@/lib/domain/types";
 
 let seq = 0;
 const nextId = (prefix: string) => `${prefix}-${++seq}`;
@@ -77,28 +68,6 @@ export const transfer = (date: string, cents: number, from: string, to: string, 
     ],
     extra,
   );
-
-export function rule(partial: Partial<RecurringRule> & Pick<RecurringRule, "kind" | "amountCents" | "accountId" | "startDate">): RecurringRule {
-  return {
-    id: nextId("rule"),
-    label: `Règle ${partial.kind}`,
-    toAccountId: null,
-    categoryId: partial.kind === "transfer" ? null : "cat-default",
-    frequency: "monthly",
-    endDate: null,
-    trackingStart: "2026-01-01",
-    certainty: "certain",
-    isActive: true,
-    variableAmount: false,
-    notes: null,
-    fundedRuleId: null,
-    ...partial,
-  };
-}
-
-export function budget(categoryId: string, period: "weekly" | "monthly", amountCents: number): Budget {
-  return { id: nextId("budget"), categoryId, period, amountCents, alertPct: null, isActive: true };
-}
 
 export function category(id: string, kind: "expense" | "income", systemKey: string | null = null): Category {
   return { id, kind, name: id, systemKey, color: null, sortOrder: 0, archivedAt: null };
