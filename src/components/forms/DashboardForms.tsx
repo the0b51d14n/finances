@@ -108,7 +108,7 @@ function ScheduleFields({ prefix, today, repeat, onRepeat, errors }: { prefix: s
 
 type Option = { id: string; name: string };
 /** Compte d'une liste de choix (voir accountChoices) : libellé « nom · nature · solde », groupe = banque. */
-type AccountOption = Option & { label: string; group: string; viaTransfer: boolean };
+type AccountOption = Option & { label: string; group: string; viaTransfer: boolean; hubName?: string | null };
 type PaymentOption = AccountOption;
 
 /** Comptes regroupés par banque, pour s'y retrouver entre plusieurs moyens de paiement. */
@@ -187,7 +187,7 @@ function PaymentsEditor({
             </button>
             {option?.viaTransfer && (
               <span className={`faint tiny ${styles.paymentNote}`}>
-                Virement de {option.name} vers {mainName}, puis paiement.
+                Virement {[option.name, ...(option.hubName && option.hubName !== mainName ? [option.hubName] : []), mainName].join(" → ")}, puis paiement.
               </span>
             )}
           </div>

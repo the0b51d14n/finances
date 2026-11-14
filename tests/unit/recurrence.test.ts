@@ -19,6 +19,7 @@ function rule(partial: Partial<RecurringRule> & Pick<RecurringRule, "frequency" 
     endDate: null,
     trackingStart: partial.startDate,
     isActive: true,
+    fundedRuleId: null,
     ...partial,
   };
 }

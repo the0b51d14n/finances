@@ -103,6 +103,8 @@ export type RecurringRule = {
   /** Les échéances antérieures ne sont jamais enregistrées. */
   trackingStart: IsoDate;
   isActive: boolean;
+  /** Étape suivante d'un virement chaîné (livret → secondaire → principal) : la règle de la première étape. */
+  fundedRuleId: string | null;
 };
 
 export type UserSettings = {

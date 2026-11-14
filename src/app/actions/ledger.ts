@@ -12,7 +12,7 @@ import { deleteById, insertInto, raw, sql, updateWhere } from "@/lib/db/sql";
 import type { UserDb } from "@/lib/db/user-db";
 import { hasExpiry, typeChangeAllowed } from "@/lib/domain/accounts";
 import { SALARIES, salaryAccount, salaryCategory } from "@/lib/domain/dashboard";
-import { adjustmentFor, buildEntries, paysViaTransfer, planPayment } from "@/lib/domain/ledger";
+import { adjustmentFor, buildEntries, paysViaTransfer, planPayment, transferHops } from "@/lib/domain/ledger";
 import { firstDate, type Schedule } from "@/lib/domain/recurrence";
 import type { Account, Entry } from "@/lib/domain/types";
 import { formatCents } from "@/lib/money";
@@ -165,41 +165,99 @@ export async function addTransferAction(_prev: ActionState, formData: FormData):
   const built = buildEntries({ kind: "transfer", amountCents: v.amount, fromAccountId: from.id, toAccountId: to.id }, accounts);
   if (!built.ok) return failure(built.error);
 
-  const saved = await saveScheduled(db, {
-    kind: "transfer",
-    label: v.label ?? `Virement vers ${to.name}`,
-    amountCents: v.amount,
-    accountId: from.id,
-    toAccountId: to.id,
-    categoryId: null,
-    entries: built.entries,
-    schedule: v.schedule,
-    requestId: v.client_request_id,
-  });
-  if (saved.error) return failure(saved.error);
+  const label = v.label ?? `Virement vers ${to.name}`;
+  // Un livret passe par le compte secondaire : livret → secondaire → destination.
+  const hops = transferHops(from.id, to.id, accounts);
+  if (hops.length === 1) {
+    const saved = await saveScheduled(db, {
+      kind: "transfer",
+      label,
+      amountCents: v.amount,
+      accountId: from.id,
+      toAccountId: to.id,
+      categoryId: null,
+      entries: built.entries,
+      schedule: v.schedule,
+      requestId: v.client_request_id,
+    });
+    if (saved.error) return failure(saved.error);
+    refreshAll();
+    return success(`Virement de ${formatCents(v.amount)} enregistré ${scheduleText(v.schedule, saved.start)}.`);
+  }
+
+  // Virement chaîné : toutes les étapes ensemble, tout ou rien.
+  const today = todayParis();
+  const start = firstDate(v.schedule, today);
+  const path = hops.map((h) => accounts.get(h.fromAccountId)!.name).concat(to.name).join(" → ");
+  let queries;
+  if (v.schedule.repeat === "none") {
+    // Étapes rattachées par une même note : supprimées ensemble.
+    const note = `${LINK_NOTE}${randomUUID()}`;
+    queries = hops.map(
+      (h) => sql`select public.save_transaction(${{
+        kind: "transfer",
+        status: start > today ? "planned" : "confirmed",
+        date: start,
+        label,
+        notes: note,
+        amount_cents: v.amount,
+        entries: [
+          { account_id: h.fromAccountId, amount_cents: -v.amount },
+          { account_id: h.toAccountId, amount_cents: v.amount },
+        ],
+      }}::jsonb)`,
+    );
+  } else {
+    // Une règle par étape ; les suivantes sont rattachées à la première (arrêtées avec elle).
+    const firstId = randomUUID();
+    const frequency = FREQUENCY[v.schedule.repeat];
+    queries = hops.map((h, i) =>
+      insertInto("recurring_rules", {
+        ...(i === 0 ? { id: firstId } : { funded_rule_id: firstId }),
+        kind: "transfer",
+        label,
+        amount_cents: v.amount,
+        account_id: h.fromAccountId,
+        to_account_id: h.toAccountId,
+        frequency,
+        start_date: start,
+        tracking_start: start,
+      }),
+    );
+  }
+  const { error } = await db.execAll(queries);
+  if (error) return failure(dbErrorMessage(error));
   refreshAll();
-  return success(`Virement de ${formatCents(v.amount)} enregistré ${scheduleText(v.schedule, saved.start)}.`);
+  return success(`Virement de ${formatCents(v.amount)} enregistré ${scheduleText(v.schedule, start)} : ${path}.`);
 }
 
-/** Note qui rattache un virement du chemin de l'argent à sa dépense. */
+/** Note qui rattache un virement du chemin de l'argent à sa dépense (« chemin:<id de requête de la dépense> »). */
 const PATH_NOTE = "chemin:";
+/** Note commune aux étapes d'un virement chaîné (livret → secondaire → principal). */
+const LINK_NOTE = "lien:";
 
 /**
- * Supprime une opération (et les virements de son chemin de l'argent). Une
- * échéance récurrente est marquée annulée plutôt qu'effacée : sinon elle serait
- * recréée automatiquement au chargement suivant.
+ * Supprime une opération avec celles qui vont avec elle : la dépense et les
+ * virements de son chemin de l'argent, ou toutes les étapes d'un virement
+ * chaîné. Une échéance récurrente est marquée annulée plutôt qu'effacée :
+ * sinon elle serait recréée automatiquement au chargement suivant.
  */
 export async function deleteTransactionAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const id = String(formData.get("id") ?? "");
   const { db } = await getSession();
-  const { data: existing } = await db.row<{ recurrence_id: string | null; client_request_id: string | null }>(
-    sql`select recurrence_id, client_request_id from public.transactions where id = ${id}`,
+  const { data: existing } = await db.row<{ recurrence_id: string | null; client_request_id: string | null; notes: string | null }>(
+    sql`select recurrence_id, client_request_id, notes from public.transactions where id = ${id}`,
   );
   if (!existing) return failure("Opération introuvable.");
-  // Virements du chemin de l'argent de cette dépense : supprimés avec elle.
-  const { data: linked } = existing.client_request_id
-    ? await db.rows<{ id: string }>(sql`select id from public.transactions where notes = ${PATH_NOTE + existing.client_request_id}`)
-    : { data: [] as { id: string }[] };
+  const notes = existing.notes ?? "";
+  const pathKey = notes.startsWith(PATH_NOTE) ? notes.slice(PATH_NOTE.length) : existing.client_request_id;
+  const { data: linked } = notes.startsWith(LINK_NOTE)
+    ? await db.rows<{ id: string }>(sql`select id from public.transactions where notes = ${notes} and id <> ${id}`)
+    : pathKey
+      ? await db.rows<{ id: string }>(
+          sql`select id from public.transactions where (notes = ${PATH_NOTE + pathKey} or client_request_id = ${pathKey}) and id <> ${id}`,
+        )
+      : { data: [] as { id: string }[] };
   const { error } = await db.execAll([
     ...(linked ?? []).map((t) => sql`select public.delete_transaction(${t.id}::uuid)`),
     existing.recurrence_id
@@ -211,11 +269,17 @@ export async function deleteTransactionAction(_prev: ActionState, formData: Form
   return success("Supprimé.");
 }
 
-/** Arrête une récurrence : plus aucune échéance ; celles déjà passées restent enregistrées. */
+/**
+ * Arrête une récurrence : plus aucune échéance ; celles déjà passées restent
+ * enregistrées. Pour un virement chaîné, toutes les étapes s'arrêtent ensemble
+ * (la fonction SQL supprime aussi les règles rattachées à la première étape).
+ */
 export async function deleteRuleAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const id = String(formData.get("id") ?? "");
   const { db } = await getSession();
-  const { error } = await db.exec(sql`select public.delete_recurring_rule(${id}::uuid)`);
+  const { data: rule } = await db.row<{ funded_rule_id: string | null }>(sql`select funded_rule_id from public.recurring_rules where id = ${id}`);
+  const target = rule?.funded_rule_id ?? id;
+  const { error } = await db.exec(sql`select public.delete_recurring_rule(${target}::uuid)`);
   if (error) return failure(dbErrorMessage(error));
   refreshAll();
   return success("Récurrence arrêtée.");

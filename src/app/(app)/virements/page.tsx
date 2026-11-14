@@ -30,7 +30,12 @@ async function Transfers() {
   const accounts = accountChoices(data)
     .filter((c) => transferable.has(c.id))
     .map((c) => ({ ...c, viaTransfer: false }));
-  const recurring = data.rules.filter((r) => r.kind === "transfer" && r.isActive);
+  // Virement chaîné (livret → secondaire → principal) : une seule ligne, la première étape.
+  const recurring = data.rules.filter((r) => r.kind === "transfer" && r.isActive && !r.fundedRuleId);
+  const pathOf = (ruleId: string, from: string, to: string | null) => {
+    const next = data.rules.filter((r) => r.fundedRuleId === ruleId).map((r) => r.toAccountId);
+    return [from, to, ...next].map((id) => accountName.get(id ?? "") ?? "?").join(" → ");
+  };
   const upcoming = data.transactions.filter((t) => t.kind === "transfer" && t.status === "planned").sort((a, b) => a.date.localeCompare(b.date));
 
   return (
@@ -55,7 +60,7 @@ async function Transfers() {
                 <span className="list-main">
                   <span>{r.label}</span>
                   <span className="faint tiny">
-                    {between(r.accountId, r.toAccountId)} · {ruleScheduleText(r)}
+                    {pathOf(r.id, r.accountId, r.toAccountId)} · {ruleScheduleText(r)}
                   </span>
                 </span>
                 <span className="row" style={{ gap: 6 }}>

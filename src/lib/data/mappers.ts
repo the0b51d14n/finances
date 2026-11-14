@@ -11,7 +11,7 @@ export const CATEGORY_COLUMNS = "id, kind, name, system_key, color, sort_order, 
 export const TRANSACTION_COLUMNS =
   "t.id, t.kind, t.status, t.date, t.label, t.notes, t.amount_cents, t.expected_amount_cents, t.category_id, t.recurrence_id, t.occurrence_date, t.is_exceptional, t.created_at, t.updated_at, t.confirmed_at";
 export const RULE_COLUMNS =
-  "id, kind, label, amount_cents, account_id, to_account_id, category_id, frequency, start_date, end_date, tracking_start, is_active";
+  "id, kind, label, amount_cents, account_id, to_account_id, category_id, frequency, start_date, end_date, tracking_start, is_active, funded_rule_id";
 export const SETTINGS_COLUMNS = "theme";
 
 type Row = Record<string, unknown>;
@@ -87,6 +87,7 @@ export function toRule(r: Row): RecurringRule {
     endDate: strOrNull(r.end_date),
     trackingStart: str(r.tracking_start),
     isActive: Boolean(r.is_active),
+    fundedRuleId: strOrNull(r.funded_rule_id),
   };
 }
 

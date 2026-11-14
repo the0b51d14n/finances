@@ -9,7 +9,7 @@ import { formatCents, type Cents } from "@/lib/money";
 import { monthKeyOf, type IsoDate } from "@/lib/dates";
 import { accountKindLabel } from "./account-kinds";
 import { balancesAt, totalsByClass } from "./accounts";
-import { paysViaTransfer } from "./ledger";
+import { paysViaTransfer, savingsHub } from "./ledger";
 import type { Account, Category, Transaction } from "./types";
 
 /** Lignes de salaire du tableau de bord : le montant saisi crédite le compte courant secondaire. */
@@ -41,7 +41,15 @@ export function salaryCategory(key: SalaryKey, categories: Category[]): Category
 }
 
 /** Compte proposé dans une liste : regroupé par banque, avec sa nature et son solde. */
-export type AccountChoice = { id: string; name: string; label: string; group: string; viaTransfer: boolean };
+export type AccountChoice = {
+  id: string;
+  name: string;
+  label: string;
+  group: string;
+  viaTransfer: boolean;
+  /** Livret : compte de passage de ses virements (compte secondaire), sinon null. */
+  hubName: string | null;
+};
 
 /**
  * Comptes actifs (hors dettes) tels qu'affichés dans les listes de choix :
@@ -51,11 +59,19 @@ export type AccountChoice = { id: string; name: string; label: string; group: st
 export function accountChoices(input: { accounts: Account[]; transactions: Transaction[]; today: IsoDate }): AccountChoice[] {
   const list = active(input.accounts).filter((a) => a.type !== "debt");
   const balances = balancesAt(list, input.transactions, input.today);
+  const byId = new Map(input.accounts.map((a) => [a.id, a]));
   return list
     .map((a) => {
       const kind = accountKindLabel(a);
       const parts = [a.name, ...(kind.toLowerCase() === a.name.toLowerCase() ? [] : [kind]), formatCents(balances.get(a.id) ?? 0)];
-      return { id: a.id, name: a.name, label: parts.join(" · "), group: a.institution ?? "Sans banque", viaTransfer: paysViaTransfer(a.type) };
+      return {
+        id: a.id,
+        name: a.name,
+        label: parts.join(" · "),
+        group: a.institution ?? "Sans banque",
+        viaTransfer: paysViaTransfer(a.type),
+        hubName: savingsHub(a, byId)?.name ?? null,
+      };
     })
     .sort((x, y) => (x.group === "Sans banque" ? 1 : 0) - (y.group === "Sans banque" ? 1 : 0) || x.group.localeCompare(y.group, "fr"));
 }

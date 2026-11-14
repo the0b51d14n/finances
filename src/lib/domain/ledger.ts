@@ -17,6 +17,35 @@ export function paysViaTransfer(type: AccountType): boolean {
   return type === "savings" || type === "dedicated_savings" || type === "investment";
 }
 
+/**
+ * Compte de passage d'un livret : l'argent d'un livret entre et sort toujours
+ * par le compte courant secondaire (de préférence celui de la même banque).
+ * Null si aucun compte secondaire actif : le virement est alors direct.
+ */
+export function savingsHub(account: Account, accountsById: Map<string, Account>): Account | null {
+  if (!paysViaTransfer(account.type)) return null;
+  const secondaries = [...accountsById.values()].filter((a) => !a.archivedAt && a.type === "checking" && a.subtype === "secondary");
+  return secondaries.find((a) => a.institution === account.institution) ?? secondaries[0] ?? null;
+}
+
+export type Hop = { fromAccountId: string; toAccountId: string };
+
+/**
+ * Étapes d'un virement : livret → compte secondaire → destination (ou l'inverse
+ * pour alimenter un livret). Une seule étape si l'un des comptes est déjà le
+ * compte secondaire, ou s'il n'y a pas de livret en jeu.
+ */
+export function transferHops(fromAccountId: string, toAccountId: string, accountsById: Map<string, Account>): Hop[] {
+  const from = accountsById.get(fromAccountId);
+  const to = accountsById.get(toAccountId);
+  const hub = (from && savingsHub(from, accountsById)) ?? (to && savingsHub(to, accountsById)) ?? null;
+  if (!hub || hub.id === fromAccountId || hub.id === toAccountId) return [{ fromAccountId, toAccountId }];
+  return [
+    { fromAccountId, toAccountId: hub.id },
+    { fromAccountId: hub.id, toAccountId },
+  ];
+}
+
 export type PaymentPart = { accountId: string; amountCents: Cents };
 
 export type PaymentPlan =
@@ -27,8 +56,9 @@ export type PaymentPlan =
  * Dépense payée par plusieurs comptes. Le compte qui paie règle le reste ;
  * chaque autre moyen de paiement règle sa part :
  *  - compte courant, espèces, carte cadeau, bon d'achat, tickets… : directement ;
- *  - livret ou épargne : par un virement préalable vers le compte qui paie
- *    (le « chemin » de l'argent), qui règle alors cette part.
+ *  - livret ou épargne : par des virements préalables vers le compte qui paie
+ *    (le « chemin » de l'argent : livret → compte secondaire → compte qui
+ *    paie), qui règle alors cette part.
  */
 export function planPayment(
   input: { amountCents: Cents; accountId: string; payments: PaymentPart[] },
@@ -57,7 +87,8 @@ export function planPayment(
       if (!isTransferable(main.type)) {
         return { ok: false, error: `Pour utiliser ${account.name}, choisissez un compte courant comme compte qui paie (il reçoit le virement).` };
       }
-      transfers.push({ fromAccountId: account.id, toAccountId: main.id, amountCents: p.amountCents });
+      // Chemin : livret → compte secondaire → compte qui paie.
+      for (const hop of transferHops(account.id, main.id, accountsById)) transfers.push({ ...hop, amountCents: p.amountCents });
     } else {
       direct.push(p);
     }

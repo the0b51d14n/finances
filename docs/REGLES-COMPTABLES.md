@@ -154,7 +154,12 @@ depuis un portefeuille de tickets-restaurant sont interdits.
 - Le **calendrier** montre, pour le mois choisi, chaque dépense, virement et
   revenu à sa date (hors ajustements et opérations annulées), ainsi que les
   échéances futures des récurrences.
-- Un **virement** ne change pas le total possédé. Les tickets-restaurant et
+- Un **virement** ne change pas le total possédé. L'argent d'un livret entre
+  et sort toujours par le **compte courant secondaire** (de préférence celui de
+  la même banque) : un virement Livret A → compte principal est enregistré en
+  deux étapes, Livret A → secondaire → principal (et inversement pour alimenter
+  un livret). Les étapes vont ensemble : supprimer ou arrêter l'une supprime ou
+  arrête les autres. Les tickets-restaurant et
   avantages affectés ne peuvent être ni source ni destination d'un virement.
 
 ## 9. Opérations (dépenses non prévues)
@@ -173,10 +178,11 @@ paie** règle le reste, chaque **autre moyen de paiement** règle sa part.
 - Compte courant, espèces, carte cadeau, bon d'achat, tickets, cagnotte : la
   part est prise directement sur le compte.
 - **Livret ou épargne** (Livret A, Livret Jeune…) : un livret ne paie pas
-  directement. Sa part fait l'objet d'un **virement** du livret vers le compte
-  qui paie, à la même date, puis le compte qui paie règle la dépense (chemin de
-  l'argent). Le virement apparaît dans le calendrier et est supprimé avec la
-  dépense.
+  directement. Sa part suit le **chemin de l'argent** : virement du livret vers
+  le compte courant secondaire, puis du secondaire vers le compte qui paie (une
+  seule étape si c'est le secondaire qui paie), à la même date ; le compte qui
+  paie règle ensuite la dépense. Les virements apparaissent dans le calendrier
+  et sont supprimés avec la dépense (et inversement).
 - Aucun compte ne peut sortir plus que son solde pour une carte cadeau, un bon
   d'achat, des tickets ou un livret.
 - Une **carte cadeau ou un bon d'achat à 0 €** est retiré automatiquement : il

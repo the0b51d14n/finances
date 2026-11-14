@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { depletedSingleUseAccounts } from "@/lib/domain/accounts";
 import { accountChoices } from "@/lib/domain/dashboard";
-import { paysViaTransfer, planPayment } from "@/lib/domain/ledger";
+import { paysViaTransfer, planPayment, transferHops } from "@/lib/domain/ledger";
 import { expenseSchema } from "@/lib/validation/schemas";
 import { account, byId, expense } from "./fixtures";
 
@@ -36,14 +36,33 @@ describe("dépense payée par plusieurs comptes", () => {
     });
   });
 
-  it("fait passer la part d'un livret par un virement vers le compte qui paie (chemin de l'argent)", () => {
+  it("fait passer la part d'un livret par le compte secondaire jusqu'au compte qui paie (chemin de l'argent)", () => {
     const plan = planPayment({ amountCents: 10_000, accountId: "principal", payments: [{ accountId: "livretA", amountCents: 7_000 }] }, accounts);
     expect(plan).toEqual({
       ok: true,
-      transfers: [{ fromAccountId: "livretA", toAccountId: "principal", amountCents: 7_000 }],
-      // Le compte qui paie règle tout : sa part + ce que le livret vient de lui virer.
+      transfers: [
+        { fromAccountId: "livretA", toAccountId: "secondaire", amountCents: 7_000 },
+        { fromAccountId: "secondaire", toAccountId: "principal", amountCents: 7_000 },
+      ],
+      // Le compte qui paie règle tout : sa part + ce que le livret vient de lui faire parvenir.
       entries: [{ accountId: "principal", amountCents: -10_000 }],
     });
+  });
+
+  it("chemin d'un virement : livret → secondaire → principal, dans les deux sens", () => {
+    expect(transferHops("livretA", "principal", accounts)).toEqual([
+      { fromAccountId: "livretA", toAccountId: "secondaire" },
+      { fromAccountId: "secondaire", toAccountId: "principal" },
+    ]);
+    expect(transferHops("principal", "livretA", accounts)).toEqual([
+      { fromAccountId: "principal", toAccountId: "secondaire" },
+      { fromAccountId: "secondaire", toAccountId: "livretA" },
+    ]);
+    // Déjà depuis ou vers le secondaire, ou sans livret : une seule étape.
+    expect(transferHops("livretA", "secondaire", accounts)).toEqual([{ fromAccountId: "livretA", toAccountId: "secondaire" }]);
+    expect(transferHops("principal", "secondaire", accounts)).toEqual([{ fromAccountId: "principal", toAccountId: "secondaire" }]);
+    // Sans compte secondaire : virement direct.
+    expect(transferHops("livretA", "principal", byId([principal, livretA]))).toEqual([{ fromAccountId: "livretA", toAccountId: "principal" }]);
   });
 
   it("combine carte cadeau, livret et compte qui paie", () => {
