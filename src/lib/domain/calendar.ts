@@ -7,7 +7,7 @@
  * Aucune date n'est décalée : un samedi reste un samedi.
  */
 import type { Cents } from "@/lib/money";
-import { endOfMonth, isoWeekday, parts, startOfMonth, type IsoDate, type MonthKey } from "@/lib/dates";
+import { endOfMonth, isoWeekday, parts, startOfMonth, todayParis, type IsoDate, type MonthKey } from "@/lib/dates";
 import { occurrences } from "./recurrence";
 import type { RecurringRule, Transaction } from "./types";
 
@@ -52,6 +52,24 @@ export type CalendarItem = {
   ruleId: string | null;
   upcoming: boolean;
 };
+
+/**
+ * Dépenses non prévues du mois (onglet Opérations) : effectuées, ponctuelles
+ * (hors récurrences) et saisies le jour même ou après coup — une dépense
+ * programmée à l'avance dans le calendrier n'en fait pas partie. Plus récentes d'abord.
+ */
+export function unplannedExpenses(transactions: Transaction[], month: MonthKey): Transaction[] {
+  return transactions
+    .filter(
+      (t) =>
+        t.kind === "expense" &&
+        t.status === "confirmed" &&
+        !t.recurrenceId &&
+        t.date.slice(0, 7) === month &&
+        todayParis(new Date(t.createdAt)) >= t.date,
+    )
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+}
 
 export function calendarItems(input: { month: MonthKey; today: IsoDate; transactions: Transaction[]; rules: RecurringRule[] }): CalendarItem[] {
   const { month, today } = input;

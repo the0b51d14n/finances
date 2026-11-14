@@ -106,8 +106,23 @@ function ScheduleFields({ prefix, today, repeat, onRepeat, errors }: { prefix: s
 
 type Option = { id: string; name: string };
 
-/** Dépense, une fois ou récurrente : alimente le calendrier et le graphique des dépenses par domaine. */
-export function ExpenseForm({ categories, accounts, defaultAccountId, today }: { categories: Option[]; accounts: Option[]; defaultAccountId: string; today: string }) {
+/**
+ * Dépense affichée dans le calendrier. Prévue : une fois ou récurrente (« Quand »).
+ * Non prévue (onglet Opérations, `unplanned`) : déjà faite, à une date passée ou du jour.
+ */
+export function ExpenseForm({
+  categories,
+  accounts,
+  defaultAccountId,
+  today,
+  unplanned = false,
+}: {
+  categories: Option[];
+  accounts: Option[];
+  defaultAccountId: string;
+  today: string;
+  unplanned?: boolean;
+}) {
   const { state, pending, onSubmit, errors } = useServerForm(addExpenseAction, { schema: expenseSchema });
   const [repeat, setRepeat] = useState<Repeat>("none");
   const ref = useResetOnSuccess(state.status, () => setRepeat("none"));
@@ -117,7 +132,14 @@ export function ExpenseForm({ categories, accounts, defaultAccountId, today }: {
       <div className={styles.grid}>
         <div className="field">
           <label htmlFor="expense-label">Nom</label>
-          <input id="expense-label" name="label" className="input" maxLength={140} placeholder="Ex. Loyer, Courses Lidl" aria-invalid={!!errors.label} />
+          <input
+            id="expense-label"
+            name="label"
+            className="input"
+            maxLength={140}
+            placeholder={unplanned ? "Ex. Courses Lidl, Facture élec" : "Ex. Loyer, Abonnement"}
+            aria-invalid={!!errors.label}
+          />
         </div>
         <div className="field">
           <label htmlFor="expense-amount">Montant</label>
@@ -146,7 +168,15 @@ export function ExpenseForm({ categories, accounts, defaultAccountId, today }: {
             ))}
           </select>
         </div>
-        <ScheduleFields prefix="expense" today={today} repeat={repeat} onRepeat={setRepeat} errors={errors} />
+        {unplanned ? (
+          <div className="field">
+            <input type="hidden" name="repeat" value="none" />
+            <label htmlFor="expense-date">Date</label>
+            <input id="expense-date" name="date" type="date" className="input" defaultValue={today} max={today} aria-invalid={!!errors.date} required />
+          </div>
+        ) : (
+          <ScheduleFields prefix="expense" today={today} repeat={repeat} onRepeat={setRepeat} errors={errors} />
+        )}
       </div>
       <div className="row-between">
         {fieldError ? <span className="field-error">{fieldError}</span> : <FormMessage state={state} />}

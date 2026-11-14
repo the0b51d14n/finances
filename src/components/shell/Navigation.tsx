@@ -12,6 +12,7 @@ type NavItem = { href: string; label: string; short: string; icon: IconName };
 const SECTIONS: NavItem[] = [
   { href: "/", label: "Tableau de bord", short: "Accueil", icon: "home" },
   { href: "/comptes", label: "Comptes", short: "Comptes", icon: "wallet" },
+  { href: "/operations", label: "Opérations", short: "Opérations", icon: "list" },
   { href: "/calendrier", label: "Calendrier", short: "Calendrier", icon: "calendar" },
   { href: "/virements", label: "Virements", short: "Virements", icon: "swap" },
 ];

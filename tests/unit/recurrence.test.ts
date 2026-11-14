@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calendarItems, ruleScheduleText } from "@/lib/domain/calendar";
+import { calendarItems, ruleScheduleText, unplannedExpenses } from "@/lib/domain/calendar";
 import { dueRealizations, firstDate, occurrences } from "@/lib/domain/recurrence";
 import type { RecurringRule } from "@/lib/domain/types";
 import { expenseSchema } from "@/lib/validation/schemas";
@@ -127,6 +127,18 @@ describe("calendrier", () => {
       ["2026-11-28", "expense", true],
     ]);
     expect(items[1]).toMatchObject({ accountId: "chk", toAccountId: "liv" });
+  });
+});
+
+describe("opérations (dépenses non prévues)", () => {
+  it("garde les dépenses ponctuelles saisies le jour même ou après, pas celles programmées à l'avance", () => {
+    const courses = expense("2026-11-12", 3_500, "chk", { createdAt: "2026-11-12T17:00:00Z" });
+    const elec = expense("2026-11-03", 6_000, "chk", { createdAt: "2026-11-10T08:00:00Z" }); // saisie après coup
+    const programmee = expense("2026-11-10", 2_000, "chk", { createdAt: "2026-11-01T08:00:00Z" });
+    const loyer = expense("2026-11-05", 45_000, "chk", { recurrenceId: "r1", occurrenceDate: "2026-11-05" });
+    const avant = expense("2026-10-30", 1_000, "chk", { createdAt: "2026-10-30T08:00:00Z" });
+    const aVenir = expense("2026-11-20", 1_000, "chk", { status: "planned", confirmedAt: null, createdAt: "2026-11-13T08:00:00Z" });
+    expect(unplannedExpenses([elec, programmee, courses, loyer, avant, aVenir], "2026-11").map((t) => t.id)).toEqual([courses.id, elec.id]);
   });
 });
 

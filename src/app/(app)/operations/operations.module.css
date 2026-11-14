@@ -1,0 +1,11 @@
+.monthNav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.monthNav h2 {
+  margin: 0;
+  min-width: 130px;
+  text-align: center;
+}

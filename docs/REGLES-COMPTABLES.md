@@ -157,7 +157,15 @@ depuis un portefeuille de tickets-restaurant sont interdits.
 - Un **virement** ne change pas le total possédé. Les tickets-restaurant et
   avantages affectés ne peuvent être ni source ni destination d'un virement.
 
-## 9. Dates
+## 9. Opérations (dépenses non prévues)
+
+L'onglet Opérations liste, mois par mois, les dépenses **non prévues** : effectuées,
+ponctuelles (sans récurrence) et saisies le jour même ou après leur date (courses,
+facture d'électricité…). Une dépense programmée à l'avance dans le calendrier,
+ou une échéance récurrente, n'y figure pas. Toutes restent visibles dans le
+calendrier à leur date et comptent dans les soldes.
+
+## 10. Dates
 
 Les dates d'opération sont des jours civils (`AAAA-MM-JJ`). Le « jour courant »
 est déterminé dans le fuseau **Europe/Paris** ; toute l'arithmétique de dates se

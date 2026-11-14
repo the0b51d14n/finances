@@ -6,6 +6,8 @@ Application web personnelle de suivi des comptes, volontairement simple :
   (alternance et Auchan, crédités sur le compte courant secondaire) et
   calendrier du mois avec les dépenses à venir (lecture seule).
 - **Comptes** : soldes, création, correction du solde, archivage.
+- **Opérations** : dépenses non prévues (courses, électricité…), saisies au
+  moment où elles arrivent, avec la liste du mois.
 - **Calendrier** : chaque dépense, virement et salaire du mois à sa date ;
   dépenses ponctuelles ou récurrentes (chaque semaine, mois ou année).
 - **Virements** : entre deux comptes, ponctuels ou récurrents.
