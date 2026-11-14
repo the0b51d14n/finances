@@ -130,7 +130,7 @@ async function Calendar({ searchParams }: { searchParams: PageProps<"/calendrier
         <div className="card-header">
           <h2 id="ajout">Ajouter une dépense</h2>
         </div>
-        <ExpenseForm {...expenseFormOptions(data.accounts, data.categories)} today={data.today} />
+        <ExpenseForm {...expenseFormOptions(data)} today={data.today} />
       </section>
     </div>
   );

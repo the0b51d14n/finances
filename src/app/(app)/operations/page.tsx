@@ -41,7 +41,7 @@ async function Operations({ searchParams }: { searchParams: PageProps<"/operatio
         <div className="card-header">
           <h2 id="ajout">Dépense non prévue</h2>
         </div>
-        <ExpenseForm {...expenseFormOptions(data.accounts, data.categories)} today={data.today} unplanned />
+        <ExpenseForm {...expenseFormOptions(data)} today={data.today} unplanned />
       </section>
 
       <section className="card stack-sm" aria-labelledby="liste">
@@ -67,7 +67,7 @@ async function Operations({ searchParams }: { searchParams: PageProps<"/operatio
                   <span>{t.label}</span>
                   <span className="faint tiny">
                     {formatDate(t.date, "short")} · {categoryName.get(t.categoryId ?? "") ?? "Sans domaine"}
-                    {t.entries[0] && ` · ${accountName.get(t.entries[0].accountId) ?? ""}`}
+                    {t.entries.length > 0 && ` · ${t.entries.map((e) => accountName.get(e.accountId) ?? "?").join(" + ")}`}
                   </span>
                 </span>
                 <span className="row" style={{ gap: 6 }}>

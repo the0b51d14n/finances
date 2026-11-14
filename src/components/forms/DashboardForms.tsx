@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { addExpenseAction, addSalaryAction, addTransferAction } from "@/app/actions/ledger";
 import { FormMessage, useServerForm } from "@/components/ui/forms";
+import { Icon } from "@/components/ui/Icon";
+import { formatCents, parseAmountToCents } from "@/lib/money";
 import type { FieldErrors } from "@/lib/validation/schemas";
 import { expenseSchema, salarySchema, transferSchema } from "@/lib/validation/schemas";
 import styles from "./dashboard-forms.module.css";
@@ -105,6 +107,105 @@ function ScheduleFields({ prefix, today, repeat, onRepeat, errors }: { prefix: s
 }
 
 type Option = { id: string; name: string };
+/** Compte d'une liste de choix (voir accountChoices) : libellé « nom · nature · solde », groupe = banque. */
+type AccountOption = Option & { label: string; group: string; viaTransfer: boolean };
+type PaymentOption = AccountOption;
+
+/** Comptes regroupés par banque, pour s'y retrouver entre plusieurs moyens de paiement. */
+function AccountOptions({ options }: { options: AccountOption[] }) {
+  const groups = new Map<string, AccountOption[]>();
+  for (const o of options) groups.set(o.group, [...(groups.get(o.group) ?? []), o]);
+  return [...groups.entries()].map(([group, list]) => (
+    <optgroup key={group} label={group}>
+      {list.map((o) => (
+        <option key={o.id} value={o.id}>
+          {o.viaTransfer ? `${o.label} (par virement)` : o.label}
+        </option>
+      ))}
+    </optgroup>
+  ));
+}
+type PaymentRow = { key: number; accountId: string; amount: string };
+
+/**
+ * Autres moyens de paiement d'une dépense (carte cadeau, espèces, livret…) :
+ * chacun règle sa part, le compte qui paie règle le reste. Un livret passe
+ * par un virement vers le compte qui paie. Envoyé en JSON (champ « payments »).
+ */
+function PaymentsEditor({
+  options,
+  rows,
+  onChange,
+  totalCents,
+  mainName,
+}: {
+  options: PaymentOption[];
+  rows: PaymentRow[];
+  onChange: (rows: PaymentRow[]) => void;
+  totalCents: number | null;
+  mainName: string;
+}) {
+  const parts = rows
+    .map((r) => ({ account_id: r.accountId, amount_cents: parseAmountToCents(r.amount) ?? 0 }))
+    .filter((p) => p.account_id && p.amount_cents > 0);
+  const othersCents = parts.reduce((s, p) => s + p.amount_cents, 0);
+  const update = (key: number, patch: Partial<PaymentRow>) => onChange(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  return (
+    <div className="stack-sm">
+      <input type="hidden" name="payments" value={parts.length > 0 ? JSON.stringify(parts) : ""} />
+      {rows.map((r, i) => {
+        const option = options.find((o) => o.id === r.accountId);
+        return (
+          <div key={r.key} className={styles.payment}>
+            <div className="field">
+              <label htmlFor={`payment-account-${r.key}`}>{`Autre moyen de paiement ${i + 1}`}</label>
+              <select id={`payment-account-${r.key}`} className="select" value={r.accountId} onChange={(e) => update(r.key, { accountId: e.target.value })}>
+                <option value="" disabled>
+                  Choisir…
+                </option>
+                <AccountOptions options={options} />
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor={`payment-amount-${r.key}`}>Montant</label>
+              <input
+                id={`payment-amount-${r.key}`}
+                className="input num"
+                inputMode="decimal"
+                placeholder="0,00"
+                value={r.amount}
+                onChange={(e) => update(r.key, { amount: e.target.value })}
+              />
+            </div>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => onChange(rows.filter((x) => x.key !== r.key))}
+              aria-label={`Retirer le moyen de paiement ${i + 1}`}
+            >
+              <Icon name="x" size={16} />
+            </button>
+            {option?.viaTransfer && (
+              <span className={`faint tiny ${styles.paymentNote}`}>
+                Virement de {option.name} vers {mainName}, puis paiement.
+              </span>
+            )}
+          </div>
+        );
+      })}
+      <div className="row-between">
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange([...rows, { key: Date.now(), accountId: "", amount: "" }])}>
+          <Icon name="plus" size={14} /> Autre moyen de paiement
+        </button>
+        {rows.length > 0 && totalCents !== null && (
+          <span className={totalCents - othersCents < 0 ? "neg small" : "muted small"}>
+            {mainName} : {formatCents(totalCents - othersCents)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /**
  * Dépense affichée dans le calendrier. Prévue : une fois ou récurrente (« Quand »).
@@ -115,18 +216,30 @@ export function ExpenseForm({
   accounts,
   defaultAccountId,
   today,
+  paymentAccounts = [],
   unplanned = false,
 }: {
   categories: Option[];
-  accounts: Option[];
+  accounts: AccountOption[];
   defaultAccountId: string;
   today: string;
+  /** Autres moyens de paiement proposés (dépense non prévue uniquement). */
+  paymentAccounts?: PaymentOption[];
   unplanned?: boolean;
 }) {
   const { state, pending, onSubmit, errors } = useServerForm(addExpenseAction, { schema: expenseSchema });
   const [repeat, setRepeat] = useState<Repeat>("none");
-  const ref = useResetOnSuccess(state.status, () => setRepeat("none"));
-  const fieldError = errors.label ?? errors.amount ?? errors.category_id ?? errors.account_id ?? errors.date ?? errors.weekday ?? errors.day;
+  const [amount, setAmount] = useState("");
+  const [mainId, setMainId] = useState(defaultAccountId);
+  const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const ref = useResetOnSuccess(state.status, () => {
+    setRepeat("none");
+    setAmount("");
+    setMainId(defaultAccountId);
+    setPayments([]);
+  });
+  const fieldError =
+    errors.label ?? errors.amount ?? errors.category_id ?? errors.account_id ?? errors.payments ?? errors.date ?? errors.weekday ?? errors.day;
   return (
     <form ref={ref} onSubmit={onSubmit} className="stack-sm" noValidate>
       <div className={styles.grid}>
@@ -143,7 +256,17 @@ export function ExpenseForm({
         </div>
         <div className="field">
           <label htmlFor="expense-amount">Montant</label>
-          <input id="expense-amount" name="amount" className="input num" inputMode="decimal" placeholder="0,00" aria-invalid={!!errors.amount} required />
+          <input
+            id="expense-amount"
+            name="amount"
+            className="input num"
+            inputMode="decimal"
+            placeholder="0,00"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            aria-invalid={!!errors.amount}
+            required
+          />
         </div>
         <div className="field">
           <label htmlFor="expense-category">Domaine</label>
@@ -159,13 +282,17 @@ export function ExpenseForm({
           </select>
         </div>
         <div className="field">
-          <label htmlFor="expense-account">Compte</label>
-          <select id="expense-account" name="account_id" className="select" defaultValue={defaultAccountId} aria-invalid={!!errors.account_id} required>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
+          <label htmlFor="expense-account">{unplanned ? "Compte qui paie" : "Compte"}</label>
+          <select
+            id="expense-account"
+            name="account_id"
+            className="select"
+            value={mainId}
+            onChange={(e) => setMainId(e.target.value)}
+            aria-invalid={!!errors.account_id}
+            required
+          >
+            <AccountOptions options={accounts} />
           </select>
         </div>
         {unplanned ? (
@@ -178,6 +305,15 @@ export function ExpenseForm({
           <ScheduleFields prefix="expense" today={today} repeat={repeat} onRepeat={setRepeat} errors={errors} />
         )}
       </div>
+      {unplanned && (
+        <PaymentsEditor
+          options={paymentAccounts.filter((o) => o.id !== mainId)}
+          rows={payments}
+          onChange={setPayments}
+          totalCents={parseAmountToCents(amount)}
+          mainName={accounts.find((a) => a.id === mainId)?.name ?? "Compte qui paie"}
+        />
+      )}
       <div className="row-between">
         {fieldError ? <span className="field-error">{fieldError}</span> : <FormMessage state={state} />}
         <button type="submit" className="btn btn-primary" disabled={pending} style={{ marginLeft: "auto" }}>
@@ -189,7 +325,7 @@ export function ExpenseForm({
 }
 
 /** Virement entre deux comptes, une fois ou récurrent. */
-export function TransferForm({ accounts, today }: { accounts: Option[]; today: string }) {
+export function TransferForm({ accounts, today }: { accounts: AccountOption[]; today: string }) {
   const { state, pending, onSubmit, errors } = useServerForm(addTransferAction, { schema: transferSchema });
   const [repeat, setRepeat] = useState<Repeat>("none");
   const ref = useResetOnSuccess(state.status, () => setRepeat("none"));
@@ -207,11 +343,7 @@ export function TransferForm({ accounts, today }: { accounts: Option[]; today: s
             <option value="" disabled>
               Choisir…
             </option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
+            <AccountOptions options={accounts} />
           </select>
         </div>
         <div className="field">
@@ -220,11 +352,7 @@ export function TransferForm({ accounts, today }: { accounts: Option[]; today: s
             <option value="" disabled>
               Choisir…
             </option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
+            <AccountOptions options={accounts} />
           </select>
         </div>
         <ScheduleFields prefix="transfer" today={today} repeat={repeat} onRepeat={setRepeat} errors={errors} />

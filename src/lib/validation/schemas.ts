@@ -112,16 +112,46 @@ function toSchedule(v: ScheduleInput) {
 }
 
 /** Dépense : nom (facultatif : le domaine sinon), montant, domaine, compte qui paie et quand. */
+const paymentPart = z.object({
+  account_id: uuid("Choisissez chaque moyen de paiement."),
+  amount_cents: z.number().int().positive("Chaque moyen de paiement doit avoir un montant positif.").max(100_000_000_000),
+});
+
+/** Autres moyens de paiement d'une dépense, transmis en JSON par le formulaire ; vide si absent. */
+const paymentsField = z
+  .string()
+  .optional()
+  .transform((value, ctx) => {
+    if (!value) return [];
+    try {
+      return JSON.parse(value) as unknown;
+    } catch {
+      ctx.addIssue({ code: "custom", message: "Moyens de paiement illisibles." });
+      return z.NEVER;
+    }
+  })
+  .pipe(z.array(paymentPart).max(6, "6 moyens de paiement maximum."));
+
 export const expenseSchema = z
   .object({
     label: optionalText(140),
     amount,
     category_id: uuid("Choisissez un domaine."),
     account_id: uuid("Choisissez un compte."),
+    /** Autres comptes qui paient une part (carte cadeau, espèces, livret via virement…). */
+    payments: paymentsField,
     client_request_id: optionalUuid,
     ...scheduleFields,
   })
-  .superRefine(checkSchedule)
+  .superRefine((v, ctx) => {
+    checkSchedule(v, ctx);
+    if (v.payments.length === 0) return;
+    const issue = (message: string) => ctx.addIssue({ code: "custom", path: ["payments"], message });
+    if (v.repeat !== "none") issue("Une dépense récurrente est payée par un seul compte.");
+    if (v.payments.reduce((s, p) => s + p.amount_cents, 0) > v.amount) issue("Les autres moyens de paiement dépassent le montant de la dépense.");
+    const ids = v.payments.map((p) => p.account_id);
+    if (new Set(ids).size !== ids.length || ids.includes(v.account_id)) issue("Chaque compte ne peut apparaître qu'une fois (compte qui paie compris).");
+  })
   .transform((v) => ({ ...v, schedule: toSchedule(v) }));
 
 /** Virement entre deux comptes, ponctuel ou récurrent. */

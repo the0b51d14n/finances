@@ -165,6 +165,27 @@ facture d'électricité…). Une dépense programmée à l'avance dans le calend
 ou une échéance récurrente, n'y figure pas. Toutes restent visibles dans le
 calendrier à leur date et comptent dans les soldes.
 
+### Payer avec plusieurs comptes
+
+Une dépense non prévue peut être réglée par plusieurs comptes : le **compte qui
+paie** règle le reste, chaque **autre moyen de paiement** règle sa part.
+
+- Compte courant, espèces, carte cadeau, bon d'achat, tickets, cagnotte : la
+  part est prise directement sur le compte.
+- **Livret ou épargne** (Livret A, Livret Jeune…) : un livret ne paie pas
+  directement. Sa part fait l'objet d'un **virement** du livret vers le compte
+  qui paie, à la même date, puis le compte qui paie règle la dépense (chemin de
+  l'argent). Le virement apparaît dans le calendrier et est supprimé avec la
+  dépense.
+- Aucun compte ne peut sortir plus que son solde pour une carte cadeau, un bon
+  d'achat, des tickets ou un livret.
+- Une **carte cadeau ou un bon d'achat à 0 €** est retiré automatiquement : il
+  n'apparaît plus nulle part (comptes, listes de paiement, total). Il n'est pas
+  effacé de la base, car les dépenses payées avec en dépendent.
+
+Dans les listes, chaque compte est affiché avec sa nature et son solde
+(« BZB · Carte cadeau · 20,00 € »), regroupé par banque.
+
 ## 10. Dates
 
 Les dates d'opération sont des jours civils (`AAAA-MM-JJ`). Le « jour courant »

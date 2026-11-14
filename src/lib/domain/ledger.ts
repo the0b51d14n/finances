@@ -7,7 +7,65 @@
  */
 import type { Cents } from "@/lib/money";
 import { isTransferable } from "./accounts";
-import type { Account, Entry } from "./types";
+import type { Account, AccountType, Entry } from "./types";
+
+/**
+ * Comptes qui ne paient pas directement (livrets, épargne, placements) : leur
+ * part d'une dépense passe d'abord par un virement vers le compte qui paie.
+ */
+export function paysViaTransfer(type: AccountType): boolean {
+  return type === "savings" || type === "dedicated_savings" || type === "investment";
+}
+
+export type PaymentPart = { accountId: string; amountCents: Cents };
+
+export type PaymentPlan =
+  | { ok: true; entries: Entry[]; transfers: { fromAccountId: string; toAccountId: string; amountCents: Cents }[] }
+  | { ok: false; error: string };
+
+/**
+ * Dépense payée par plusieurs comptes. Le compte qui paie règle le reste ;
+ * chaque autre moyen de paiement règle sa part :
+ *  - compte courant, espèces, carte cadeau, bon d'achat, tickets… : directement ;
+ *  - livret ou épargne : par un virement préalable vers le compte qui paie
+ *    (le « chemin » de l'argent), qui règle alors cette part.
+ */
+export function planPayment(
+  input: { amountCents: Cents; accountId: string; payments: PaymentPart[] },
+  accountsById: Map<string, Account>,
+): PaymentPlan {
+  const main = accountsById.get(input.accountId);
+  if (!main) return { ok: false, error: "Compte invalide." };
+  if (paysViaTransfer(main.type)) {
+    return { ok: false, error: "Un livret ne paie pas directement : choisissez un compte courant et ajoutez le livret comme autre moyen de paiement." };
+  }
+  const ids = input.payments.map((p) => p.accountId);
+  if (new Set(ids).size !== ids.length || ids.includes(main.id)) {
+    return { ok: false, error: "Chaque compte ne peut apparaître qu'une fois (compte qui paie compris)." };
+  }
+  if (input.payments.reduce((s, p) => s + p.amountCents, 0) > input.amountCents) {
+    return { ok: false, error: "Les autres moyens de paiement dépassent le montant de la dépense." };
+  }
+
+  const direct: PaymentPart[] = [];
+  const transfers: { fromAccountId: string; toAccountId: string; amountCents: Cents }[] = [];
+  for (const p of input.payments) {
+    const account = accountsById.get(p.accountId);
+    if (!account || account.archivedAt) return { ok: false, error: "Moyen de paiement invalide." };
+    if (account.type === "debt") return { ok: false, error: `${account.name} est une dette : elle ne peut pas payer une dépense.` };
+    if (paysViaTransfer(account.type)) {
+      if (!isTransferable(main.type)) {
+        return { ok: false, error: `Pour utiliser ${account.name}, choisissez un compte courant comme compte qui paie (il reçoit le virement).` };
+      }
+      transfers.push({ fromAccountId: account.id, toAccountId: main.id, amountCents: p.amountCents });
+    } else {
+      direct.push(p);
+    }
+  }
+  const built = buildEntries({ kind: "expense", amountCents: input.amountCents, accountId: main.id, otherPayments: direct }, accountsById);
+  if (!built.ok) return built;
+  return { ok: true, entries: built.entries, transfers };
+}
 
 export type EntryInput =
   | {

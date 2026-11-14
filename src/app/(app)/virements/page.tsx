@@ -9,6 +9,7 @@ import { formatDate } from "@/lib/dates";
 import { loadFinanceData } from "@/lib/data/load";
 import { isTransferable } from "@/lib/domain/accounts";
 import { ruleScheduleText } from "@/lib/domain/calendar";
+import { accountChoices } from "@/lib/domain/dashboard";
 
 export const metadata: Metadata = { title: "Virements" };
 
@@ -25,7 +26,10 @@ async function Transfers() {
   const accountName = new Map(data.accounts.map((a) => [a.id, a.name]));
   const between = (from: string, to: string | null) => `${accountName.get(from) ?? "?"} → ${accountName.get(to ?? "") ?? "?"}`;
   // Tickets-restaurant et avantages affectés ne se virent pas.
-  const accounts = data.accounts.filter((a) => !a.archivedAt && isTransferable(a.type)).map((a) => ({ id: a.id, name: a.name }));
+  const transferable = new Set(data.accounts.filter((a) => isTransferable(a.type)).map((a) => a.id));
+  const accounts = accountChoices(data)
+    .filter((c) => transferable.has(c.id))
+    .map((c) => ({ ...c, viaTransfer: false }));
   const recurring = data.rules.filter((r) => r.kind === "transfer" && r.isActive);
   const upcoming = data.transactions.filter((t) => t.kind === "transfer" && t.status === "planned").sort((a, b) => a.date.localeCompare(b.date));
 

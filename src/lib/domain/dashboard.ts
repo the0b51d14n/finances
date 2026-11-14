@@ -5,9 +5,11 @@
  *  - Épargne       : livrets et épargne spécifique (Livret A, Livret Jeune…).
  *  - Salaires      : montant reçu ce mois-ci pour chaque ligne de salaire.
  */
-import type { Cents } from "@/lib/money";
+import { formatCents, type Cents } from "@/lib/money";
 import { monthKeyOf, type IsoDate } from "@/lib/dates";
+import { accountKindLabel } from "./account-kinds";
 import { balancesAt, totalsByClass } from "./accounts";
+import { paysViaTransfer } from "./ledger";
 import type { Account, Category, Transaction } from "./types";
 
 /** Lignes de salaire du tableau de bord : le montant saisi crédite le compte courant secondaire. */
@@ -38,17 +40,40 @@ export function salaryCategory(key: SalaryKey, categories: Category[]): Category
   return categories.find((c) => c.kind === "income" && c.systemKey === categoryKey && !c.archivedAt) ?? null;
 }
 
-/** Choix proposés par le formulaire de dépense : domaines, comptes payeurs, compte par défaut. */
-export function expenseFormOptions(accounts: Account[], categories: Category[]) {
-  // Comptes qui peuvent payer une dépense (ni dette ni placement).
-  const payers = active(accounts)
-    .filter((a) => a.type !== "debt" && a.type !== "investment")
-    .map((a) => ({ id: a.id, name: a.name }));
-  const preferred = defaultExpenseAccount(accounts);
+/** Compte proposé dans une liste : regroupé par banque, avec sa nature et son solde. */
+export type AccountChoice = { id: string; name: string; label: string; group: string; viaTransfer: boolean };
+
+/**
+ * Comptes actifs (hors dettes) tels qu'affichés dans les listes de choix :
+ * « BZB · Carte cadeau · 20,00 € », regroupés par banque. La nature n'est
+ * répétée que si elle diffère du nom (« Livret A · 3 000,00 € »).
+ */
+export function accountChoices(input: { accounts: Account[]; transactions: Transaction[]; today: IsoDate }): AccountChoice[] {
+  const list = active(input.accounts).filter((a) => a.type !== "debt");
+  const balances = balancesAt(list, input.transactions, input.today);
+  return list
+    .map((a) => {
+      const kind = accountKindLabel(a);
+      const parts = [a.name, ...(kind.toLowerCase() === a.name.toLowerCase() ? [] : [kind]), formatCents(balances.get(a.id) ?? 0)];
+      return { id: a.id, name: a.name, label: parts.join(" · "), group: a.institution ?? "Sans banque", viaTransfer: paysViaTransfer(a.type) };
+    })
+    .sort((x, y) => (x.group === "Sans banque" ? 1 : 0) - (y.group === "Sans banque" ? 1 : 0) || x.group.localeCompare(y.group, "fr"));
+}
+
+/**
+ * Choix proposés par le formulaire de dépense : domaines, comptes qui paient
+ * (ni dette, ni livret, ni placement), compte par défaut, et autres moyens de
+ * paiement (livrets compris : leur part passe par un virement).
+ */
+export function expenseFormOptions(input: { accounts: Account[]; categories: Category[]; transactions: Transaction[]; today: IsoDate }) {
+  const choices = accountChoices(input);
+  const payers = choices.filter((c) => !c.viaTransfer);
+  const preferred = defaultExpenseAccount(input.accounts);
   return {
-    categories: categories.filter((c) => c.kind === "expense" && !c.archivedAt).map((c) => ({ id: c.id, name: c.name })),
+    categories: input.categories.filter((c) => c.kind === "expense" && !c.archivedAt).map((c) => ({ id: c.id, name: c.name })),
     accounts: payers,
     defaultAccountId: (payers.find((p) => p.id === preferred?.id) ?? payers[0])?.id ?? "",
+    paymentAccounts: choices,
   };
 }
 

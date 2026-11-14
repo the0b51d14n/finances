@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { failure, success, type ActionState } from "@/lib/actions/state";
@@ -11,7 +12,7 @@ import { deleteById, insertInto, raw, sql, updateWhere } from "@/lib/db/sql";
 import type { UserDb } from "@/lib/db/user-db";
 import { hasExpiry, typeChangeAllowed } from "@/lib/domain/accounts";
 import { SALARIES, salaryAccount, salaryCategory } from "@/lib/domain/dashboard";
-import { adjustmentFor, buildEntries } from "@/lib/domain/ledger";
+import { adjustmentFor, buildEntries, paysViaTransfer, planPayment } from "@/lib/domain/ledger";
 import { firstDate, type Schedule } from "@/lib/domain/recurrence";
 import type { Account, Entry } from "@/lib/domain/types";
 import { formatCents } from "@/lib/money";
@@ -180,20 +181,31 @@ export async function addTransferAction(_prev: ActionState, formData: FormData):
   return success(`Virement de ${formatCents(v.amount)} enregistré ${scheduleText(v.schedule, saved.start)}.`);
 }
 
+/** Note qui rattache un virement du chemin de l'argent à sa dépense. */
+const PATH_NOTE = "chemin:";
+
 /**
- * Supprime une opération. Une échéance récurrente est marquée annulée plutôt
- * qu'effacée : sinon elle serait recréée automatiquement au chargement suivant.
+ * Supprime une opération (et les virements de son chemin de l'argent). Une
+ * échéance récurrente est marquée annulée plutôt qu'effacée : sinon elle serait
+ * recréée automatiquement au chargement suivant.
  */
 export async function deleteTransactionAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const id = String(formData.get("id") ?? "");
   const { db } = await getSession();
-  const { data: existing } = await db.row<{ recurrence_id: string | null }>(sql`select recurrence_id from public.transactions where id = ${id}`);
+  const { data: existing } = await db.row<{ recurrence_id: string | null; client_request_id: string | null }>(
+    sql`select recurrence_id, client_request_id from public.transactions where id = ${id}`,
+  );
   if (!existing) return failure("Opération introuvable.");
-  const { error } = await db.exec(
+  // Virements du chemin de l'argent de cette dépense : supprimés avec elle.
+  const { data: linked } = existing.client_request_id
+    ? await db.rows<{ id: string }>(sql`select id from public.transactions where notes = ${PATH_NOTE + existing.client_request_id}`)
+    : { data: [] as { id: string }[] };
+  const { error } = await db.execAll([
+    ...(linked ?? []).map((t) => sql`select public.delete_transaction(${t.id}::uuid)`),
     existing.recurrence_id
       ? sql`select public.set_transaction_status(${id}::uuid, 'cancelled', null)`
       : sql`select public.delete_transaction(${id}::uuid)`,
-  );
+  ]);
   if (error) return failure(dbErrorMessage(error));
   refreshAll();
   return success("Supprimé.");
@@ -224,34 +236,91 @@ export async function addExpenseAction(_prev: ActionState, formData: FormData): 
   const { data: category } = await db.row(sql`select ${raw(CATEGORY_COLUMNS)} from public.categories where id = ${v.category_id}`);
   if (!category || category.kind !== "expense") return failure(INVALID, { category_id: "Domaine invalide." });
 
-  // Carte cadeau, bon d'achat, tickets-restaurant : jamais plus que leur solde.
-  if (hasExpiry(account.type)) {
-    const { data: row } = await db.row<{ balance_cents: number }>(
-      sql`select balance_cents from public.account_balances where account_id = ${account.id}`,
+  const plan = planPayment(
+    { amountCents: v.amount, accountId: account.id, payments: v.payments.map((p) => ({ accountId: p.account_id, amountCents: p.amount_cents })) },
+    accounts,
+  );
+  if (!plan.ok) return failure(INVALID, { payments: plan.error });
+
+  // Ce que chaque compte doit sortir (sa part de la dépense, ou son virement).
+  const outflow = new Map<string, number>();
+  const take = (id: string, cents: number) => outflow.set(id, (outflow.get(id) ?? 0) + cents);
+  for (const e of plan.entries) if (e.amountCents < 0) take(e.accountId, -e.amountCents);
+  for (const t of plan.transfers) take(t.fromAccountId, t.amountCents);
+  // Carte cadeau, bon d'achat, tickets-restaurant, livrets : jamais plus que leur solde.
+  const limited = [...outflow.keys()].filter((id) => {
+    const a = accounts.get(id)!;
+    return hasExpiry(a.type) || paysViaTransfer(a.type);
+  });
+  if (limited.length > 0) {
+    const { data: rows } = await db.rows<{ account_id: string; balance_cents: number }>(
+      sql`select account_id, balance_cents from public.account_balances where account_id in (select (jsonb_array_elements_text(${limited}::jsonb))::uuid)`,
     );
-    const available = Number(row?.balance_cents ?? 0);
-    if (v.amount > available) {
-      return failure(INVALID, { account_id: `${account.name} n'a que ${formatCents(Math.max(0, available))}.` });
+    for (const id of limited) {
+      const available = Number(rows?.find((r) => r.account_id === id)?.balance_cents ?? 0);
+      if (outflow.get(id)! > available) {
+        const message = `${accounts.get(id)!.name} n'a que ${formatCents(Math.max(0, available))}.`;
+        return failure(INVALID, id === account.id ? { account_id: message } : { payments: message });
+      }
     }
   }
 
-  const built = buildEntries({ kind: "expense", amountCents: v.amount, accountId: account.id }, accounts);
-  if (!built.ok) return failure(built.error);
+  const label = v.label ?? String(category.name);
+  if (plan.transfers.length === 0) {
+    const saved = await saveScheduled(db, {
+      kind: "expense",
+      label,
+      amountCents: v.amount,
+      accountId: account.id,
+      toAccountId: null,
+      categoryId: v.category_id,
+      entries: plan.entries,
+      schedule: v.schedule,
+      requestId: v.client_request_id,
+    });
+    if (saved.error) return failure(saved.error);
+    refreshAll();
+    return success(`Dépense de ${formatCents(v.amount)} enregistrée ${scheduleText(v.schedule, saved.start)}.`);
+  }
 
-  const saved = await saveScheduled(db, {
-    kind: "expense",
-    label: v.label ?? String(category.name),
-    amountCents: v.amount,
-    accountId: account.id,
-    toAccountId: null,
-    categoryId: v.category_id,
-    entries: built.entries,
-    schedule: v.schedule,
-    requestId: v.client_request_id,
-  });
-  if (saved.error) return failure(saved.error);
+  // Chemin de l'argent : virements depuis les livrets vers le compte qui paie,
+  // puis la dépense, dans une seule transaction (tout ou rien). Les virements
+  // sont rattachés à la dépense (notes « chemin:<id de requête> ») pour être
+  // supprimés avec elle.
+  const today = todayParis();
+  const date = firstDate(v.schedule, today);
+  const status = date > today ? "planned" : "confirmed";
+  const link = v.client_request_id ?? randomUUID();
+  const { error } = await db.execAll([
+    ...plan.transfers.map(
+      (t) => sql`select public.save_transaction(${{
+        kind: "transfer",
+        status,
+        date,
+        label: `Virement pour « ${label} »`,
+        notes: `${PATH_NOTE}${link}`,
+        amount_cents: t.amountCents,
+        entries: [
+          { account_id: t.fromAccountId, amount_cents: -t.amountCents },
+          { account_id: t.toAccountId, amount_cents: t.amountCents },
+        ],
+      }}::jsonb)`,
+    ),
+    sql`select public.save_transaction(${{
+      client_request_id: link,
+      kind: "expense",
+      status,
+      date,
+      label,
+      amount_cents: v.amount,
+      category_id: v.category_id,
+      entries: entriesPayload(plan.entries),
+    }}::jsonb)`,
+  ]);
+  if (error) return failure(dbErrorMessage(error));
   refreshAll();
-  return success(`Dépense de ${formatCents(v.amount)} enregistrée ${scheduleText(v.schedule, saved.start)}.`);
+  const via = plan.transfers.map((t) => accounts.get(t.fromAccountId)!.name).join(", ");
+  return success(`Dépense de ${formatCents(v.amount)} enregistrée, avec virement depuis ${via}.`);
 }
 
 // -----------------------------------------------------------------------------

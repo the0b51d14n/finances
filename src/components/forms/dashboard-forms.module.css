@@ -12,3 +12,16 @@
   gap: 10px;
   align-items: end;
 }
+
+/* Autre moyen de paiement : compte, montant, retirer ; note du virement dessous. */
+.payment {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(90px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.paymentNote {
+  grid-column: 1 / -1;
+  margin-top: -4px;
+}
