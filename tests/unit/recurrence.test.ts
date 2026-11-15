@@ -1,9 +1,43 @@
 import { describe, expect, it } from "vitest";
-import { calendarItems, ruleScheduleText, unplannedExpenses } from "@/lib/domain/calendar";
+import { calendarItems, domainBreakdown, ruleScheduleText, unplannedExpenses } from "@/lib/domain/calendar";
 import { dueRealizations, firstDate, occurrences } from "@/lib/domain/recurrence";
 import type { RecurringRule } from "@/lib/domain/types";
 import { expenseSchema } from "@/lib/validation/schemas";
-import { expense, transfer } from "./fixtures";
+import { category, expense, transfer } from "./fixtures";
+
+describe("graphique des dépenses par domaine", () => {
+  const domains = ["courses", "loisirs", "maison", "a", "b", "c", "d", "e", "f"].map((id) => category(id, "expense"));
+
+  it("donne montant exact et part en % par domaine, du plus gros au plus petit", () => {
+    const slices = domainBreakdown(
+      [
+        expense("2026-11-14", 11_265, "chk", { categoryId: "courses" }),
+        expense("2026-11-14", 11_582, "chk", { categoryId: "maison" }),
+        expense("2026-11-14", 4_227, "chk", { categoryId: "maison" }),
+        expense("2026-11-14", 40, "chk", { categoryId: "loisirs" }),
+      ],
+      domains,
+    );
+    expect(slices.map((s) => [s.key, s.cents, s.pct, s.slot])).toEqual([
+      ["maison", 15_809, 58.3, 2],
+      ["courses", 11_265, 41.5, 0],
+      ["loisirs", 40, 0.1, 1],
+    ]);
+    expect(domainBreakdown([], domains)).toEqual([]);
+  });
+
+  it("regroupe au-delà de 7 domaines en « Autres domaines », sans couleur répétée", () => {
+    const ids = ["courses", "loisirs", "maison", "a", "b", "c", "d", "e", "f"];
+    const slices = domainBreakdown(
+      ids.map((id, i) => expense("2026-11-14", (ids.length - i) * 1_000, "chk", { categoryId: id })),
+      domains,
+    );
+    expect(slices).toHaveLength(8);
+    expect(slices.at(-1)).toMatchObject({ key: "autres", label: "Autres domaines", cents: 2_000 + 1_000, slot: null });
+    const slots = slices.slice(0, 7).map((s) => s.slot);
+    expect(new Set(slots).size).toBe(7);
+  });
+});
 
 const TODAY = "2026-11-13"; // vendredi
 

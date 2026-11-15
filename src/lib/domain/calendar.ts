@@ -9,7 +9,55 @@
 import type { Cents } from "@/lib/money";
 import { endOfMonth, isoWeekday, parts, startOfMonth, todayParis, type IsoDate, type MonthKey } from "@/lib/dates";
 import { occurrences } from "./recurrence";
-import type { RecurringRule, Transaction } from "./types";
+import type { Category, RecurringRule, Transaction } from "./types";
+
+/** Domaines affichés individuellement dans le graphique ; au-delà, « Autres domaines ». */
+export const DOMAIN_SLOTS = 7;
+
+export type DomainSlice = {
+  key: string;
+  label: string;
+  cents: Cents;
+  /** Part du total, en pourcentage (une décimale). */
+  pct: number;
+  /** Couleur : 0 à 6 (fixe pour un domaine dans le mois), null pour « Autres domaines ». */
+  slot: number | null;
+};
+
+/**
+ * Répartition des dépenses par domaine (graphique de l'onglet Opérations), du
+ * plus gros au plus petit. Les 7 premiers domaines ont chacun leur part ; le
+ * reste est regroupé en « Autres domaines ». La couleur suit le domaine (ordre
+ * des domaines), jamais son rang : un domaine garde sa couleur quand les montants changent.
+ */
+export function domainBreakdown(expenses: Transaction[], categories: Category[]): DomainSlice[] {
+  const byCategory = new Map<string, Cents>();
+  for (const t of expenses) byCategory.set(t.categoryId ?? "", (byCategory.get(t.categoryId ?? "") ?? 0) + t.amountCents);
+  const total = [...byCategory.values()].reduce((s, c) => s + c, 0);
+  if (total === 0) return [];
+  const pct = (cents: Cents) => Math.round((cents / total) * 1000) / 10;
+  const order = new Map(categories.map((c, i) => [c.id, i]));
+  const name = new Map(categories.map((c) => [c.id, c.name]));
+
+  const ranked = [...byCategory.entries()].sort((a, b) => b[1] - a[1]);
+  const shown = ranked.slice(0, DOMAIN_SLOTS);
+  const rest = ranked.slice(DOMAIN_SLOTS);
+  const slotOf = new Map(
+    [...shown].sort((a, b) => (order.get(a[0]) ?? Infinity) - (order.get(b[0]) ?? Infinity)).map(([id], i) => [id, i]),
+  );
+  const slices: DomainSlice[] = shown.map(([id, cents]) => ({
+    key: id || "sans-domaine",
+    label: name.get(id) ?? "Sans domaine",
+    cents,
+    pct: pct(cents),
+    slot: slotOf.get(id) ?? null,
+  }));
+  if (rest.length > 0) {
+    const cents = rest.reduce((s, [, c]) => s + c, 0);
+    slices.push({ key: "autres", label: "Autres domaines", cents, pct: pct(cents), slot: null });
+  }
+  return slices;
+}
 
 const WEEKDAYS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
 const MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];

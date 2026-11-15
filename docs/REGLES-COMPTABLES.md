@@ -170,6 +170,13 @@ facture d'électricité…). Une dépense programmée à l'avance dans le calend
 ou une échéance récurrente, n'y figure pas. Toutes restent visibles dans le
 calendrier à leur date et comptent dans les soldes.
 
+Le **graphique des dépenses par domaine** (anneau) de l'onglet Opérations porte
+sur ces mêmes dépenses, pour le mois affiché : il repart donc de zéro chaque
+1er du mois. Pour chaque domaine : montant exact et part du total en % (une
+décimale). Les 7 plus gros domaines ont chacun leur couleur (fixe pour un
+domaine, quel que soit son rang) ; les suivants sont regroupés en « Autres
+domaines ».
+
 ### Payer avec plusieurs comptes
 
 Une dépense non prévue peut être réglée par plusieurs comptes : le **compte qui

@@ -4,8 +4,14 @@
   gap: 4px;
 }
 
-.monthNav h2 {
-  margin: 0;
-  min-width: 130px;
-  text-align: center;
+.monthLabel {
+  min-width: 150px;
+  justify-content: center;
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .monthLabel {
+    min-width: 0;
+  }
 }
